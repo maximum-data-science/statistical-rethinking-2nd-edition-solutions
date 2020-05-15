@@ -3,7 +3,8 @@ title: "Chapter 2"
 author: "jim108@gmx.net"
 date: "5/14/2020"
 output:
-  html_notebook:
+  html_document:
+    df_print: paged
     toc: yes
 ---
 
