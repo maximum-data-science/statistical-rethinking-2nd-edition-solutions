@@ -1,0 +1,188 @@
+---
+title: "Chapter 2"
+author: "jim108@gmx.net"
+date: "5/14/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 2E1. 
+Probability of rain on Monday?
+(2), (4)
+
+## 2E2. 
+Pr(Monday|rain)?
+(3)
+
+
+## 2E3.
+Probability that it is Monday, given that it is raining? (1), (4)
+
+## 2E4. 
+What does it mean to say “the probability of water is 0.7”?
+
+We are following the Laplace-Jeffreys-Cox-Jaynes interpretation of probability. The number of tosses where the globe lands on land devided by the total number of tosses is in expectation 0.7.
+
+## 2M1. 
+Compute and plot the grid approximate posterior distribution for
+(1) W, W, W
+(2) W, W, W, L
+(3) L, W, W, L, W, W, W
+
+```{r}
+plot_grid_post <- function(k,n, title){
+  p_grid <- seq( from=0 , to=1 , length.out=20 )
+  prior <- rep( 1 , 20 )
+  likelihood <- dbinom( k , size=n , prob=p_grid )
+  unstd.posterior <- likelihood * prior
+  posterior <- unstd.posterior / sum(unstd.posterior)
+  plot( p_grid , posterior , type="b" ,
+        xlab="probability of water" , ylab="posterior probability" )
+  mtext(title)
+}
+par(mfrow=c(1,3)) 
+plot_grid_post(k=3,n=3, "W, W, W")
+plot_grid_post(k=3,n=4, "W, W, W, L")
+plot_grid_post(k=5,n=7, "L, W, W, L, W, W, W")
+```
+
+
+## 2M2. 
+Assume a prior for p that is equal to zero when p < 0.5 and is a positive constant when p >= 0.5.
+```{r}
+plot_grid_post_half_prior <- function(k,n, title){
+  ## R code 2.3
+  # define grid
+  p_grid <- seq( from=0 , to=1 , length.out=20 )
+  
+  # define prior
+  prior <- ifelse( p_grid < 0.5, 0, 1)
+  
+  # compute likelihood at each value in grid
+  likelihood <- dbinom( k , size=n , prob=p_grid )
+  
+  # compute product of likelihood and prior
+  unstd.posterior <- likelihood * prior
+  
+  # standardize the posterior, so it sums to 1
+  posterior <- unstd.posterior / sum(unstd.posterior)
+  
+  plot( p_grid , posterior , type="b" ,
+        xlab="probability of water" , ylab="posterior probability" )
+  mtext(title)
+}
+par(mfrow=c(1,3)) 
+plot_grid_post_half_prior(k=3,n=3, "W, W, W")
+plot_grid_post_half_prior(k=3,n=4, "W, W, W, L")
+plot_grid_post_half_prior(k=5,n=7, "L, W, W, L, W, W, W")
+```
+
+## 2M3. 
+Given: E:="earth", M:="mars",L:="land",
+$p(L\mid E) = \frac{3}{10}, \quad p(L\mid M) = 1, \quad p(E) = p(M) = 1/2$.
+
+Show: $p(E\mid L)= 0.23$.
+
+Sol.: $p(E\mid L)=\frac{p(L\mid E)p(E)}{p(L)} = \frac{p(L\mid E)p(E)}{p(L\mid E)p(E) + p(L\mid M)p(M)} = \frac{3}{13}$. 
+
+## 2M4.
+Given: cards: B/B, B/W, W/W.
+
+Show: $p(B/B)=\frac{2}{3}$.
+
+Sol.: 
+
+|     | Cards | Ways | Probs |
+|-----|-------|------|-------|
+|     | B/B   | 2    | 2/3   |
+|     | B/W   | 1    | 1/3   |
+|     | W/W   | 0    | 0     |
+| Sum |       | 3    |       |
+
+
+## 2M5.
+Given: cards: B/B, B/W, W/W, B/B.
+
+Want: p(B/B).
+
+Sol.:
+
+|     | Cards | Ways | Probs |
+|-----|-------|------|-------|
+|     | B/B   | 4    | 4/5   |
+|     | B/W   | 1    | 1/5   |
+|     | W/W   | 0    | 0     |
+| Sum |       | 5    |       |
+
+## 2M6.
+Given: cards: B/B, B/W, W/W, B/B. For every B/B,2 * B/W, 3 * W/W.
+
+Show: p(B/B) = 0.5.
+
+Sol.:
+
+|     | Cards | Ways  | Probs |
+|-----|-------|-------|-------|
+|     | B/B   | 1 * 2 | 1/2   |
+|     | B/W   | 2 * 1 | 1/2   |
+|     | W/W   | 0     | 0     |
+| Sum |       | 4     |       |
+
+## 2M7.
+Given: cards: B/B, B/W, W/W. First draw B/?, second draw W/? without replacement.
+
+Show: p(B/?) = 3/4.
+
+Sol.:
+
+|     | Cards | 1st draw ways | 2nd draw ways | Product | Probs |
+|-----|-------|---------------|---------------|---------|-------|
+|     | B/B   | 2             | 3             | 6       | 3/4   |
+|     | B/W   | 1             | 2             | 2       | 1/4   |
+|     | W/W   | 0             | 2             | 0       | 0     |
+| Sum |       |               |               | 8       |       |
+
+
+## 2H1.
+Given: Panda bears: A, B. T:="gives birth to twins", S:="gives birth to a single infant".
+$p(T\mid A) = \frac{1}{10}$, $p(S\mid A) = \frac{9}{10}$, $p(T\mid B) = \frac{2}{10}$, $p(S\mid B) = \frac{2}{10}$,
+$p(A)=p(B)=\frac{1}{2}$.
+
+Want: $p(T\mid T)$.
+
+Sol.: 
+$$p(T \mid T) = p(A\mid T) p(T\mid A) + p(B\mid T)p(T\mid B)$$.
+
+$$p(A\mid T) = \frac{p(T\mid A) p(A)}{p(T)} = \frac{1}{3} \quad\Rightarrow\quad p(B\mid T) = \frac{2}{3}.$$
+$$\quad p(T) = p(T\mid A) p(A) + p(T\mid B) p(B) = \frac{20}{3}$$
+$$\Rightarrow\quad p(T\mid T) = \frac{1}{6}.$$
+
+## 2H2.
+Given: same as 2H1.
+
+Want: $p(A\mid T, S)$.
+
+Sol.: 2H1 $\Rightarrow$ $p(A\mid T)=\frac{1}{3}$.
+
+
+## 2H3.
+Given: same as 2H1.
+
+Want: $p(A\mid T)$.
+
+Sol.:
+$$p(A \mid T,S) = \frac{p(S,T\mid A) p(A)}{p(A)} = \frac{p(T\mid A) p(S\mid A) p(A)}{p(T\mid A) p(S\mid A)p(A) + p(T\mid B) p(S\mid B) p(B)} =\frac{9}{25}.$$
+
+## 2H4.
+Given: 2H1 and $t_A$ := "test indicates panda bear A", $t_B$ := "test indicates panda bear B",
+$p(t_A \mid A) = \frac{8}{10}$, $p(t_B \mid A) = \frac{2}{10}$, $p(t_B \mid B) = \frac{15}{20}$, $p(t_A \mid B) = \frac{7}{20}$.
+
+Want: $p(A \mid t_A)$, $p(A\mid t_A, T)$.
+
+Sol.:
+
+$$p(A \mid t_A) = \frac{p(t_A \mid A) p(A)}{p(t_A)} = \frac{16}{23}.$$
+$$p(A \mid t_A, T) = \frac{p(t_A,T \mid A) p(A)}{p(t_A,T)} = \frac{p(t_A\mid A) p(T \mid A) p(A)}{p(t_A,T)}= \frac{8}{15}.$$
