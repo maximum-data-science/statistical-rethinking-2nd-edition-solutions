@@ -69,8 +69,10 @@ PI( samples , prob=0.66 )
 ```
 
 ## 3M1.
-Given: Globe example: $k=8$, $n=15$
-Want: $P(p\mid k,n)$
+Given: Globe example: $k=8$, $n=15$.
+
+Want: $P(p\mid k,n)$.
+
 Sol.:
 ```{r}
 get_globe_samples <- function(k,n){
@@ -87,9 +89,9 @@ set.seed(3)
 samples <- get_globe_samples(8, 15)
 ```
 ## 3M2.
-Given: Globe example: $k=8$, $n=15$
+Given: Globe example: $k=8$, $n=15$.
 
-Want: Draw 10000 samples, 90% HPDI
+Want: Draw 10000 samples, 90% HPDI.
 
 Sol.:
 ```{r}
@@ -102,16 +104,20 @@ HPDI( samples , prob=0.90 )
 ```
 
 ## 3M3.
-Given: Globe example: $k=8$, $n=15$
+Given: Globe example: $k=8$, $n=15$.
+
 Want: Simulate the distribution of samples, averaging over the posterior uncertainty in p.
+
 Sol.:
 ```{r}
 d15 <- rbinom(1e4, size=15, prob=samples)
 mean(d15 == 8)
 ```
 ## 3M4.
-Given: Globe example: $k=6$, $n=9$
-Want: mean samples
+Given: Globe example: $k=6$, $n=9$.
+
+Want: Mean samples.
+
 Sol.:
 ```{r}
 d9 <- rbinom(10000, size=9, prob=samples)
@@ -119,7 +125,9 @@ mean(d9==6)
 ```
 ## 3M5.
 Given: Use a prior that is zero below p = 0.5 and a constant above p = 0.5.
+
 Want: Compare results with the prior before.
+
 Sol.:
 ```{r}
 get_globe_samples_half <- function(k,n){
@@ -141,8 +149,6 @@ dens( samples )
 plot( samples_half )
 dens( samples_half )
 ```
-
-## 3M2.
 ```{r}
 HPDI( samples , prob=0.90 )
 HPDI( samples_half , prob=0.90 )
@@ -233,7 +239,7 @@ abline(v = mean(d), lty=3, lwd=2)
 
 ## 3H4.
 Compare 10,000 counts of boys from 100 simulated first borns only to the number of boys
-in the first births, birth1 .
+in the first births.
 ```{r}
 posterior <- get_posterior(sum(birth1), length(birth1), p_grid)
 set.seed(123)
@@ -255,8 +261,7 @@ print(sprintf("Actual first born boys: %.f.",sum(birth1)))
 
 
 ## 3H5.
-Compare 10,000 counts of boys from 100 simulated first borns only to the number of boys
-in the first births, birth1 .
+Compare 10,000 simulated counts of boys to only those second births that followed girls.
 
 ```{r}
 birth1_female_idxs <- birth1 == 0
