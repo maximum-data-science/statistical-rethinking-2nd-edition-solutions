@@ -1,0 +1,273 @@
+---
+title: "Chapter 3"
+author: "jim108@gmx.net"
+date: "5/15/2020"
+output:
+  html_document:
+    df_print: paged
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(rethinking)
+data(homeworkch3)
+```
+
+## 3E1.
+```{r, echo=FALSE}
+library(rethinking)
+
+n <- 1000
+p_grid <- seq( from=0 , to=1 , length.out=n )
+prob_p <- rep( 1 , n )
+prob_data <- dbinom( 6 , size=9 , prob=p_grid )
+posterior <- prob_data * prob_p
+posterior <- posterior / sum(posterior)
+
+set.seed(3)
+samples <- sample( p_grid , prob=posterior , size=1e4 , replace=TRUE )
+
+par(mfrow=c(1,2))
+plot( samples )
+dens( samples )
+```
+
+How much posterior probability lies below p = 0.2?
+```{r}
+mean(samples < 0.2)
+```
+## 3E2.
+How much posterior probability lies above p = 0.8?
+```{r}
+mean(samples > 0.8)
+```
+## 3E3.
+How much posterior probability lies between p = 0.2 and p = 0.8?
+```{r}
+mean(samples > 0.2 & samples < 0.8)
+```
+## 3E4.
+20% of the posterior probability lies below which value of p?
+```{r}
+quantile(samples,0.2)
+```
+## 3E5.
+20% of the posterior probability lies above which value of p?
+```{r}
+quantile(samples,0.8)
+```
+## 3E6.
+Which values of p contain the narrowest interval equal to 66% of the posterior probability?
+```{r}
+HPDI( samples , prob=0.66 )
+```
+## 3E7.
+Which values of p contain 66% of the posterior probability, assuming equal posterior probability both below and above the interval?
+```{r}
+PI( samples , prob=0.66 )
+```
+
+## 3M1.
+Given: Globe example: $k=8$, $n=15$
+Want: $P(p\mid k,n)$
+Sol.:
+```{r}
+get_globe_samples <- function(k,n){
+  num_grid_points <- 1000
+  p_grid <- seq( from=0 , to=1 , length.out=num_grid_points)
+  prior <- rep(1,num_grid_points)
+  likelihood <- dbinom( k , size=n , prob=p_grid )
+  posterior <- likelihood * prior
+  posterior <- posterior / sum(posterior)
+  samples <- sample( p_grid , size=1e4 , replace=TRUE , prob=posterior )
+  return(samples)
+}
+set.seed(3)
+samples <- get_globe_samples(8, 15)
+```
+## 3M2.
+Given: Globe example: $k=8$, $n=15$
+
+Want: Draw 10000 samples, 90% HPDI
+
+Sol.:
+```{r}
+par(mfrow=c(1,2))
+plot( samples )
+dens( samples )
+```
+```{r}
+HPDI( samples , prob=0.90 )
+```
+
+## 3M3.
+Given: Globe example: $k=8$, $n=15$
+Want: Simulate the distribution of samples, averaging over the posterior uncertainty in p.
+Sol.:
+```{r}
+d15 <- rbinom(1e4, size=15, prob=samples)
+mean(d15 == 8)
+```
+## 3M4.
+Given: Globe example: $k=6$, $n=9$
+Want: mean samples
+Sol.:
+```{r}
+d9 <- rbinom(10000, size=9, prob=samples)
+mean(d9==6)
+```
+## 3M5.
+Given: Use a prior that is zero below p = 0.5 and a constant above p = 0.5.
+Want: Compare results with the prior before.
+Sol.:
+```{r}
+get_globe_samples_half <- function(k,n){
+  num_grid_points <- 1000
+  p_grid <- seq( from=0 , to=1 , length.out=num_grid_points)
+  prior <- ifelse( p_grid < 0.5, 0, 1)
+  likelihood <- dbinom( k , size=n , prob=p_grid )
+  posterior <- likelihood * prior
+  posterior <- posterior / sum(posterior)
+  samples <- sample( p_grid , size=1e4 , replace=TRUE , prob=posterior )
+  return(samples)
+}
+
+set.seed(3)
+samples_half <- get_globe_samples_half(8, 15)
+par(mfrow=c(2,2))
+plot( samples )
+dens( samples )
+plot( samples_half )
+dens( samples_half )
+```
+
+## 3M2.
+```{r}
+HPDI( samples , prob=0.90 )
+HPDI( samples_half , prob=0.90 )
+```
+
+```{r}
+d15 <- rbinom(1e4, size=15, prob=samples)
+mean(d15 == 8)
+d15_half <- rbinom(1e4, size=15, prob=samples_half)
+mean(d15_half == 8)
+```
+```{r}
+dumdata <- rbinom(10000, size=9, prob=samples)
+mean(dumdata==6)
+dumdata_half <- rbinom(10000, size=9, prob=samples_half)
+mean(dumdata_half==6)
+```
+```{r}
+get_pi_width <- function(samples){
+  pi <- PI(samples,prob = 0.99)
+  w <- pi[2] - pi[1]
+  return(w)
+}
+get_pi_width(samples)
+```
+
+```{r}
+get_globe_samples_tight <- function(k,n){
+  num_grid_points <- 1000
+  p_grid <- seq( from=0 , to=1 , length.out=num_grid_points)
+  prior <- ifelse( p_grid < 0.5 | p_grid > 0.55, 0, 1)
+  likelihood <- dbinom( k , size=n , prob=p_grid )
+  posterior <- likelihood * prior
+  posterior <- posterior / sum(posterior)
+  samples <- sample( p_grid , size=1e4 , replace=TRUE , prob=posterior )
+  return(samples)
+}
+set.seed(100)
+samples <- get_globe_samples_tight(8,15)
+get_pi_width(samples)
+```
+
+## 3H1.
+Which parameter value maximizes the posterior probability?
+```{r}
+num_boys <- sum(birth1) + sum(birth2)
+num_children <- length(birth1) + length(birth2)
+
+get_posterior <- function(k,n, p_grid){
+  num_grid_points <- length(p_grid)
+  prior <- rep(1,num_grid_points)
+  likelihood <- dbinom( k , size=n , prob=p_grid )
+  posterior <- likelihood * prior
+  return(posterior / sum(posterior))
+}
+p_grid <- seq( from=0 , to=1 , length.out=1000)
+posterior <- get_posterior(num_boys, num_children, p_grid)
+plot(x = p_grid, y = posterior, type = "l")
+```
+```{r}
+map <- p_grid[ which.max(posterior) ] 
+map
+```
+
+## 3H2.
+10000 samples. Use these samples to estimate the 50%, 89%, and 97% highest posterior density intervals.
+```{r}
+set.seed(123)
+samples <- sample( p_grid , size=1e4 , replace=TRUE , prob=posterior )
+for(w in c(.5, .89, .97)){
+  hpi = HPDI(samples, w)
+  print(sprintf("HPDI %d%% [%.2f, %.2f]",w*100, hpi[1], hpi[2]))
+}
+```
+
+## 3H3.
+Use rbinom to simulate 10,000 replicates of 200 births. You should end up with 10,000 num-
+bers, each one a count of boys out of 200 births. Compare the distribution of predicted numbers of boys to the actual count in the data (111 boys out of 200 births).
+
+```{r}
+set.seed(123)
+d <- rbinom(1e4, size=200, prob=samples)
+par(mfrow=c(1,1))
+dens(d)
+abline(v = num_boys, lty=2)
+abline(v = mean(d), lty=3, lwd=2)
+```
+
+## 3H4.
+Compare 10,000 counts of boys from 100 simulated first borns only to the number of boys
+in the first births, birth1 .
+```{r}
+posterior <- get_posterior(sum(birth1), length(birth1), p_grid)
+set.seed(123)
+samples <- sample( p_grid , size=1e4 , replace=TRUE , prob=posterior )
+d <- rbinom(1e4, size=100, prob=samples)
+par(mfrow=c(1,1))
+dens(d)
+abline(v = sum(birth1), lty=2)
+abline(v = mean(d), lty=3, lwd=2)
+```
+
+```{r}
+set.seed(123)
+d <- rbinom(1e4, size=100, prob=samples)
+par(mfrow=c(1,2))
+print(sprintf("Simulated first born boys: %.f.",mean(d)))
+print(sprintf("Actual first born boys: %.f.",sum(birth1)))
+```
+
+
+## 3H5.
+Compare 10,000 counts of boys from 100 simulated first borns only to the number of boys
+in the first births, birth1 .
+
+```{r}
+birth1_female_idxs <- birth1 == 0
+birth2_birth1_female <- birth2[birth1_female_idxs]
+num_birth1_female <- sum(birth1_female_idxs)
+
+posterior <- get_posterior(num_birth1_female, length(birth1), p_grid)
+set.seed(123)
+samples <- sample( p_grid , size=1e4 , replace=TRUE , prob=posterior )
+d <- rbinom(1e4, size=100, prob=samples)
+
+print(sprintf("Simulated second born boys: %.f.",mean(d)))
+print(sprintf("Actual second born boys of first born females: %.f.",sum(birth2_birth1_female)))
+```
