@@ -1,0 +1,313 @@
+---
+title: "Chapter 4"
+author: "jim108@gmx.net"
+date: "5/16/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(rethinking)
+
+#https://stackoverflow.com/questions/29875914/rounding-values-in-a-dataframe-in-r
+round_df <- function(x, digits) {
+    # round all numeric variables
+    # x: data frame 
+    # digits: number of digits to round
+    numeric_columns <- sapply(x, mode) == 'numeric'
+    x[numeric_columns] <-  round(x[numeric_columns], digits)
+    x
+}
+```
+
+## 4E1.
+In the model definition below, which line is the likelihood?
+$$ y_i \sim Normal(\mu, \sigma)\\
+  \mu \sim Normal(0,10)\\
+  \sigma \sim Exponential(1)$$
+
+The first line.
+
+## 4E2.
+In the model definition just above, how many parameters are in the posterior distribution?
+
+Count parameters = $\#\{\mu,\sigma\}=2$.
+
+## 4E3.
+Using the model definition above, write down the appropriate form of Bayes’ theorem that
+includes the proper likelihood and priors.
+$$ p(\mu, \sigma \mid y) =  \frac{\prod_i Normal(y_i\mid\mu, \sigma) Normal(\mu\mid 0, 10) Exponential(\sigma\mid 1)}{\int\int \prod_i Normal(y_i\mid\mu, \sigma) Normal(\mu\mid 0, 10) Exponential(\sigma\mid 1) d\mu\, d\sigma}$$
+
+## 4E4.
+In the model definition below, which line is the linear model?
+$$ y_i \sim Normal(\mu_i, \sigma)\\
+ \mu_i = \alpha + \beta x_i\\
+ \alpha \sim Normal(0, 10)\\
+ \beta \sim Uniform(0, 1)\\
+ \sigma \sim Exponential(2) $$
+The second line.
+
+
+## 4E5.
+In the model definition just above, how many parameters are in the posterior distribution?
+
+Count parameters = $\#\{\alpha,\beta, \sigma\}=3$.
+
+## 4M1.
+For the model definition below, simulate observed y values from the prior (not the posterior).
+$$ y_i \sim Normal(\mu, \sigma)\\
+ \mu \sim Normal(0, 10)\\
+ \sigma \sim Exponential(1) $$
+
+```{r}
+n <- 100
+mu <- rnorm(n,0,10)
+sigma <- rexp(n,1)
+y <- rnorm(n, mu, sigma)
+dens(y)
+```
+
+## 4M2. 
+Translate the model just above into a quap formula.
+```{r}
+quap_formula <- alist(
+  y ~ dnorm( mu, sigma),
+  mu ~ dnorm( 0, 10),
+  sigma ~ dexp(1)
+)
+```
+
+## 4M3. 
+Translate the quap model formula below into a mathematical model definition.
+```{r}
+flist <- alist(
+  y ~ dnorm( mu , sigma ),
+  mu <- a + b*x,
+  a ~ dnorm( 0 , 10 ),
+  b ~ dunif( 0 , 1 ),
+  sigma ~ dexp( 1 )
+)
+```
+$$ y_i \sim Normal(\mu_i, \sigma)\\
+ \mu_i = \alpha + \beta x_i\\
+ \alpha \sim Normal(0, 10)\\
+ \beta \sim Uniform(0, 1)\\
+ \sigma \sim Exponential(1) $$
+
+## 4M3. 
+Given: Students measured for height for 3 years.
+
+Want: Regression model for height.
+
+Sol.:
+
+$$ h_i \sim Normal(\mu_i, \sigma)\\
+ \mu_i = \alpha + \beta(y_i - \bar{y})\\
+ \alpha \sim Normal(170, 10)\\
+ \beta \sim Log-Normal(0, 1)\\
+ \sigma \sim Uniform(0,10) $$
+
+- The 95 % interval of height is set to $170\pm 20$cm for the average year ($\bar{y}:=\frac{0+1+2}{3}=1$).
+- The 95 % interval for the increase in height per year is set to $\pm 20$cm per year.
+- The Log-Normal distribution is choosen to keep $\beta$ positive.
+
+## 4M4.
+Given: 4M3 and every student got taller each year.
+
+Want: Regression model for height.
+
+Sol.:
+
+Already incorporated.
+
+
+## 4M5.
+Given: 4M3 and the variance among heights for students of the same age is nevermore than 64cm.
+
+Want: Regression model for height.
+
+Sol.:
+
+$$ h_i \sim Normal(\mu_i, \sigma)\\
+ \mu_i = \alpha + \beta(y_i - \bar{y})\\
+ \alpha \sim Normal(170, 32)\\
+ \beta \sim Log-Normal(0, 1)\\
+ \sigma \sim Uniform(0,10) $$
+
+## 4H1.
+Given: !Kung census.
+
+Want: Expected heights and 89 % interval for weights 46.95, 43.72, 64.78, 32.59, 54.63.
+
+Sol.:
+
+```{r}
+#4H1
+data("Howell1")
+d <- Howell1
+
+xbar <- mean(d$weight)
+# fit model
+m4H1 <- quap(
+  alist(
+    height ~ dnorm( mu , sigma ) ,
+    mu <- a + b*( weight - xbar ) ,
+    a ~ dnorm( 178 , 20 ) ,
+    b ~ dlnorm( 0 , 1 ) ,
+    sigma ~ dunif( 0 , 50 )
+  ) , data=d )
+
+post <- extract.samples(m4H1)
+dnew <- data.frame(id=1:5, weight=c(46.95, 43.72, 64.78, 32.59, 54.63))
+sim.dnew <- sim(m4H1, data = dnew, n=1e4)
+dnew$height <- apply(sim.dnew, 2, mean)
+hpdi.new <- apply(sim.dnew, 2, HPDI)
+dnew$hpdi.low <- hpdi.new[1,]
+dnew$hpdi.high <- hpdi.new[2,]
+
+round_df(dnew,2)
+```
+
+## 4H2.
+Given: Howell1 data with ages below 18 years of age.
+
+Want: (a) Fit a linear regression to these data, using quap. For every 10 units of increase in weight, how much taller does the model predict a child gets?
+
+Sol.:
+```{r}
+d3 <- d[ d$age < 18 ,]
+
+d3$weight_s <- (d3$weight - mean(d3$weight) / sd(d3$weight))
+d3$weight_s2 <- d3$weight_s^2
+
+flist_lin <- alist(
+  height ~ dnorm(mu, sigma),
+  mu <- a + b*weight_s,
+  a~dnorm(178,20),
+  b ~ dlnorm( 0, 1),
+  sigma ~ dunif(0,50))
+m4H2 <- quap(flist_lin, data=d3)
+summary(m4H2)
+```
+```{r}
+coef(m4H2)['b']*10
+```
+
+Want: (b) Plot predicted mean, 89 % interval for mean, 89 % interval for data. 
+
+Sol.:
+```{r}
+weight.seq <- seq( from=0, to=40, length.out = 40)
+pred_dat <- list(weight_s=weight.seq)
+mu <- link(m4H2, data=pred_dat)
+mu.mean <- apply( mu, 2, mean)
+mu.PI <- apply( mu, 2, PI, prob=0.89)
+sim.height <- sim(m4H2, data=pred_dat)
+height.PI <- apply( sim.height, 2, PI, prob=0.89)
+
+
+plot(height ~ weight_s, d3, col=col.alpha(rangi2,0.5))
+lines( weight.seq, mu.mean)
+shade( mu.PI, weight.seq)
+shade( height.PI, weight.seq)
+```
+
+Want: (c) Critique the prediction.
+
+Sol.:
+
+The linear regression does a poor job in prediting the heights at lower and top end of the spectrum. A better model would be quadratic or cubic regression.
+
+## 4H3.
+Given: Entire Howell1 data.
+
+Want: (a) Fit model with
+$$ h_i \sim Normal(\mu_i, \sigma)\\
+ \mu_i = \alpha + \beta log(w_i)\\
+ \alpha \sim Normal(178, 20)\\
+ \beta \sim Log-Normal(0,1)\\
+ \sigma \sim Uniform(50) $$
+Sol.:
+
+```{r}
+xbar <- mean(d$weight)
+
+# fit model
+d4 <- d
+#d4$weight_s <- (d4$weight - mean(d4$weight) / sd(d4$weight))
+d4$weight_s <- d4$weight
+m4H3 <- quap(
+  alist(
+    height ~ dnorm( mu , sigma ) ,
+    mu <- a + b*log( weight_s ) ,
+    a ~ dnorm( 178 , 20 ) ,
+    b ~ dlnorm( 0 , 1 ) ,
+    sigma ~ dunif( 0 , 50 )
+  ) , data=d4 )
+
+max_weight <- max(d4$weight_s)
+weight.seq <- seq( from=0, to=max_weight, length.out = 40)
+pred_dat <- list(weight_s=weight.seq)
+mu <- link(m4H3, data=pred_dat)
+mu.mean <- apply( mu, 2, mean)
+mu.PI <- apply( mu, 2, PI, prob=0.89)
+sim.height <- sim(m4H3, data=pred_dat)
+height.PI <- apply( sim.height, 2, PI, prob=0.89)
+
+
+plot(height ~ weight_s, d4, col=col.alpha(rangi2,0.5))
+lines( weight.seq, mu.mean)
+shade( mu.PI, weight.seq)
+shade( height.PI, weight.seq)
+```
+
+Although the weights are not standardized the plot indecates the model fits the data quite well.
+
+Want: (b) Plot predicted mean, 97 % interval for mean, 97 % interval for data. 
+
+```{r}
+plot( height ~ weight, data=d4, col=col.alpha(rangi2, 0.4))
+
+max_weight <- max(d4$weight_s)
+weight.seq <- seq( from=0, to=max_weight, length.out = 40)
+pred_dat <- list(weight_s=weight.seq)
+mu <- link(m4H3, data=pred_dat)
+mu.mean <- apply( mu, 2, mean)
+mu.PI <- apply( mu, 2, PI, prob=0.97)
+sim.height <- sim(m4H3, data=pred_dat)
+height.PI <- apply( sim.height, 2, PI, prob=0.97)
+
+
+lines( weight.seq, mu.mean)
+shade( mu.PI, weight.seq, col = col.alpha("red",0.5))
+shade( height.PI, weight.seq)
+```
+
+## 4H4.
+Given: Entire Howell1 data.
+
+Want: Plot prior predictive distribution for the polynomial regression model. Modify the prior distribution so that the values stay inside the biologically reasonable range.
+
+Sol.:
+
+```{r}
+max_weight <- max(d4$weight)
+weight_s <- seq( from=0, to=max_weight, length.out = 40)
+weight_s2 <- weight_s^2
+
+N <- 100
+a <- rnorm(N, 150, 20)
+b1 <- rlnorm(N,0,0.4)
+b2 <- rnorm(N,0,0.04)
+sigma <- runif(N, 0, 50)
+
+plot( NULL , xlim=range(d4$weight) , ylim=c(-100,400) ,
+    xlab="weight" , ylab="height" )
+abline( h=0 , lty=2 )
+abline( h=272 , lty=1 , lwd=0.5 )
+mtext(sprintf("mean weight = %.1f kg", xbar) )
+xbar <- mean(d4$weight)
+for ( i in 1:N ) curve( a[i] + b1[i]*(x-xbar) + b2[i]*(x-xbar)^2 ,
+    from=min(d4$weight) , to=max(d4$weight) , add=TRUE ,
+    col=col.alpha("black",0.2) )
+```
