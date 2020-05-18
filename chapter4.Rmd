@@ -135,7 +135,7 @@ $$ h_i \sim Normal(\mu_i, \sigma)\\
  \sigma \sim Uniform(0,10) $$
 
 ## 4H1.
-Given: !Kung census.
+Given: Entire Howell1 data.
 
 Want: Expected heights and 89 % interval for weights 46.95, 43.72, 64.78, 32.59, 54.63.
 
