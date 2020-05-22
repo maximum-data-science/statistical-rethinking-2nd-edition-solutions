@@ -1,0 +1,476 @@
+---
+title: "Chapter 5"
+author: "jim108@gmx.net"
+date: "5/19/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(rethinking)
+set.seed(5)
+```
+
+## 5E1.
+
+Want: 
+Which of the linear models below are multiple linear regressions?
+
+(1) $\mu_i = \alpha + \beta x_i$
+(2) $\mu_i = \beta_x x_i + \beta_z z_i$
+(3) $\mu_i = \alpha + \beta(x_i -z_i)$
+(4) $\mu_i = \alpha + \beta_x x_i + \beta_z z_i$
+
+Sol.:
+
+(1) Only one $\beta$, hence not multiple regression. 
+(2) Multiple regression with intercept = 0.
+(3) Only one $\beta$, hence not multiple regression. 
+(4) Two $\beta s$, multiple regression.
+
+## 5E2.
+Claim: Animal diversity (A) is linearly related to latitude (L), but only after controlling for plant diversity (P).
+
+Want: Multiple regression. 
+
+Sol.:
+
+$A_i \sim Normal(\mu_i, \sigma)$
+
+$\mu_i = \alpha + \beta_L L_i + \beta_P P_i$
+
+## 5E3.
+Claim: Neither amount of funding (F) nor size of laboratory (L) is by itself a good predictor of time to PhD degree (D); but together these variables are both positively associated with time to degree. 
+
+Want: Model definition and indicate which side of zero each slope parameter should be on.
+
+Sol.:
+
+$D_i \sim Normal(\mu_i, \sigma)$
+
+$\mu_i = \alpha + \beta_F F_i + \beta_L L_i$
+
+$\beta_F \sim Exponential(1)$
+
+$\beta_L \sim Exponential(1)$
+
+
+## 5E4.
+Given:
+
+(1) $\mu_i = \alpha + \beta_A A_i + \beta_B B_i + \beta_D D_i$
+(2) $\mu_i = \alpha + \beta_A A_i + \beta_B B_i + \beta_C C_i + \beta_D D_i$
+(3) $\mu_i = \alpha + \beta_B B_i + \beta_C C_i + \beta_D D_i$
+(4) $\mu_i = \alpha A_i + \alpha_B B_i + \alpha_C C_i + \alpha_D D_i$
+(5) $\mu_i = \alpha(1- B_i - C_i -D_i) + \alpha_B B_i + \alpha_C C_i + \alpha_D D_i$
+
+Want: Which models are inferentially equivalent?
+
+Sol.: 4.,5.
+
+
+## 5M1.
+
+Want: Invent spurious correlation.
+
+Sol.:
+
+Influence of the number of hours stayed at the bar (B) and the number of Drinks(D) on alcohol concentration in the blood (C).
+
+```{r}
+N <- 100
+B <- rnorm(N, mean = 1, sd = 1)
+D <- rnorm(n = N, mean = B, sd = 1)
+C <- rnorm(n = N, mean = B, sd = 1)
+d <- data.frame(C, B, D)
+```
+
+
+```{r}
+pairs(d,lower.panel=NULL)
+```
+
+- Looks like C is positively correlated to B.
+- Looks like C is positively correlated to B.
+
+```{r}
+mBD <- quap(
+    alist(
+        C ~ dnorm( mu , sigma ) ,
+        mu <- a + bB * B  + bD * D ,
+        a ~ dnorm( 0 , 0.2 ) ,
+        bB ~ dnorm( 0 , 0.5 ) ,
+        bD ~ dnorm( 0 , 0.5 ) ,
+        sigma ~ dexp( 1 )
+    ) , data = d )
+
+precis(mBD)
+```
+
+- There is only a strong positive correlation between B and C.
+
+
+## 5M2.
+
+Want: Invent masked relationship. An outcome variable should be correlated with both predictor variables, but in opposite directions. And the two predictor variables should be correlated with one another.
+
+Sol.:
+
+Influence of the time spend walking (W) and the time spend sitting (S) on the body weight (B).
+
+```{r}
+N <- 100
+W <- rnorm(N, mean = 0, sd = 1)
+S <- rnorm(N, mean = 0.5 * W, sd = 1)
+B <- rnorm(n = N, mean = S - W, sd = 1)
+d <- data.frame(B, S, W)
+pairs(d,lower.panel=NULL)
+```
+
+- Looks like B is positively correlated to S.
+- Looks like B is negtively correlated to W.
+
+```{r}
+mS <- quap(
+    alist(
+        B ~ dnorm( mu , sigma ) ,
+        mu <- a  + bS * S,
+        a ~ dnorm( 0 , 0.5 ) ,
+        bS ~ dnorm( 0 , 0.5 ) ,
+        sigma ~ dexp( 1 )
+    ) , data = d )
+
+precis(mS)
+```
+
+```{r}
+mW <- quap(
+    alist(
+        B ~ dnorm( mu , sigma ) ,
+        mu <- a  + bW * W,
+        a ~ dnorm( 0 , 0.5 ) ,
+        bW ~ dnorm( 0 , 0.5 ) ,
+        sigma ~ dexp( 1 )
+    ) , data = d )
+
+precis(mW)
+```
+
+
+```{r}
+mSW <- quap(
+    alist(
+        B ~ dnorm( mu , sigma ) ,
+        mu <- a  + bS * S + bW * W ,
+        a ~ dnorm( 0 , 0.2 ) ,
+        bS ~ dnorm( 0 , 0.5 ) ,
+        bW ~ dnorm( 0 , 0.5 ) ,
+        sigma ~ dexp( 1 )
+    ) , data = d )
+
+precis(mSW)
+```
+
+- Now the influence of both factors is higher in the multiple regression model.
+
+## 5M3.
+
+Want: How can a high divorce rate cause a higher marriage rate? Multiple regression.
+
+Sol.:
+
+The more people divorce, the more couples can find each other to marry.
+
+$M_i \sim Normal(\mu_i, \sigma)$
+
+$\mu_i = \alpha + \beta_D D_i$
+
+
+## 5M4.
+Given: Divorce rates.
+
+Want: Find a list of LDS population by State and use those numbers as a predictor variable, predicting divorce rate (D) using marriage rate (M), median age at marriage (A), and percent LDS population (L).
+
+Sol.:
+```{r}
+#https://en.wikipedia.org/wiki/The_Church_of_Jesus_Christ_of_Latter-day_Saints_membership_statistics_(United_States)
+mormon_population <- read.csv(file = 'data/mormon_population.csv')
+
+data("WaffleDivorce")
+
+waffle_data <- WaffleDivorce
+
+d <- merge(waffle_data,mormon_population, by.x = "Location", by.y = "State")
+
+# standardize variables
+d$D <- standardize( d$Divorce )
+d$M <- standardize( d$Marriage )
+d$A <- standardize( d$MedianAgeMarriage )
+d$L <- standardize( d$Fraction )
+d$L
+```
+
+```{r}
+model_extended <- quap(
+    alist(
+        D ~ dnorm( mu , sigma ) ,
+        mu <- a + bM*M + bA*A +bL*L,
+        a ~ dnorm( 0 , 0.2 ) ,
+        bM ~ dnorm( 0 , 0.5 ) ,
+        bA ~ dnorm( 0 , 0.5 ) ,
+        bL ~ dnorm( 0 , 0.5 ) ,
+        sigma ~ dexp( 1 )
+    ) , data = d )
+
+precis( model_extended )
+
+model_simple <- quap(
+    alist(
+        D ~ dnorm( mu , sigma ) ,
+        mu <- a + bM*M + bA*A ,
+        a ~ dnorm( 0 , 0.2 ) ,
+        bM ~ dnorm( 0 , 0.5 ) ,
+        bA ~ dnorm( 0 , 0.5 ) ,
+        sigma ~ dexp( 1 )
+    ) , data = d )
+
+precis( model_simple )
+
+```
+
+```{r}
+
+plot_post_predictive <- function(model,title){
+  mu <- link( model )
+  
+  # summarize samples across cases
+  mu_mean <- apply( mu , 2 , mean )
+  mu_PI <- apply( mu , 2 , PI )
+  
+  # simulate observations
+  # again no new data, so uses original data
+  D_sim <- sim( model , n=1e4 )
+  D_PI <- apply( D_sim , 2 , PI )
+  
+  ## R code 5.16
+  plot( mu_mean ~ d$D , col=rangi2 , ylim=range(mu_PI) ,
+      xlab="Observed divorce" , ylab="Predicted divorce" )
+  abline( a=0 , b=1 , lty=2 )
+  for ( i in 1:nrow(d) ) lines( rep(d$D[i],2) , mu_PI[,i] , col=rangi2)
+  mtext(title)
+}
+par(mfrow=c(1,2)) 
+plot_post_predictive(model_simple, "Without LDS")
+plot_post_predictive(model_extended, "With LDS")
+
+```
+
+- The model shows only minor improvements with the incorperated LDS fractions.
+
+## 5M5.
+
+Claim: The price of gasoline (P) is positively associated with lower obesity rates (O). First, it could lead to less driving and therefore more exercise (E). Second, it could lead to less driving, which leads to less eating out, which leads to less consumption of huge restaurant meals (C).
+
+Want: Multiple regression.
+
+
+Sol.: 
+
+$O_i \sim Normal(\mu_i, \sigma)$
+
+$\mu_i = \alpha + \beta_P P_i + \beta_E E_i + + \beta_C C_i$
+
+## 5H1.
+
+Given: Foxes data.
+
+Want: (1) body weight (W) as a linear function of territory size (T). Plot the results of these regressions, displaying the MAP regression line and the 95% interval of the mean.
+
+Sol.:
+
+```{r}
+data("foxes")
+d <- foxes
+summary(d)
+```
+
+```{r}
+d$W <- standardize( d$weight )
+d$T <- standardize( d$area )
+
+mT <- quap(
+    alist(
+        W ~ dnorm( mu , sigma ) ,
+        mu <- a + bT*T,
+        a ~ dnorm( 0 , 0.5 ) ,
+        bT ~ dnorm( 0 , 0.5 ) ,
+        sigma ~ dexp( 1 )
+    ) , data = d )
+
+T_seq <- seq( from=-3 , to=3.2 , length.out=30 )
+mu <- link( mT , data=list(T=T_seq) )
+mu.mean <- apply( mu , 2, mean )
+mu.PI <- apply( mu , 2 , PI, 0.95 )
+
+plot( W ~ T , data=d , col=rangi2 )
+lines( T_seq , mu.mean , lwd=2 )
+shade( mu.PI , T_seq )
+
+```
+
+- The plot shows no correlation between territory size and body weight.
+
+
+Want: (2) body weight (W) as a linear function of groupsize (G).Plot the results of these regressions, displaying the MAP regression line and the 95% interval of the mean.
+
+Sol.:
+
+```{r}
+d$W <- standardize( d$weight )
+d$G <- standardize( d$groupsize )
+mG <- quap(
+    alist(
+        W ~ dnorm( mu , sigma ) ,
+        mu <- a + bG*G,
+        a ~ dnorm( 0 , 0.5 ) ,
+        bG ~ dnorm( 0 , 0.5 ) ,
+        sigma ~ dexp( 1 )
+    ) , data = d )
+
+G_seq <- seq( from=-3 , to=3.2 , length.out=30 )
+mu <- link( mG , data=list(G=G_seq) )
+mu.mean <- apply( mu , 2, mean )
+mu.PI <- apply( mu , 2 , PI, 0.95 )
+
+plot( W ~ G , data=d , col=rangi2 )
+lines( G_seq , mu.mean , lwd=2 )
+shade( mu.PI , G_seq )
+
+```
+
+- The plot shows a weak negative correlation between group size and body weight.
+
+
+## 5H2.
+
+Given: Foxes data.
+
+Want: Multiple regression of the influence of territory size (T) and groupsize (G) on body weight (W). Compare to 5H1.
+
+Sol.:
+
+```{r}
+d$W <- standardize( d$weight )
+d$G <- standardize( d$groupsize )
+d$T <- standardize( d$area )
+
+
+mGT <- quap(
+    alist(
+        W ~ dnorm( mu , sigma ) ,
+        mu <- a + bG*G + bT*T,
+        a ~ dnorm( 0 , 0.5 ) ,
+        bG ~ dnorm( 0 , 0.5 ) ,
+        bT ~ dnorm( 0 , 0.5 ) ,
+        sigma ~ dexp( 1 )
+    ) , data = d )
+
+bG.mean <- coef(mGT)['bG']
+bT.mean <- coef(mGT)['bT']
+par(mfrow=c(1,2))
+
+# T plot
+T_seq <- seq( from=-3 , to=3.2 , length.out=30 )
+mu <- link( mGT , data=list(T=T_seq, G=bG.mean) )
+mu.mean <- apply( mu , 2, mean )
+mu.PI <- apply( mu , 2 , PI, 0.95 )
+
+plot( W ~ T , data=d , col=rangi2 )
+lines( T_seq , mu.mean , lwd=2 )
+shade( mu.PI , T_seq )
+
+# G plot
+G_seq <- seq( from=-3 , to=3.2 , length.out=30 )
+mu <- link( mGT , data=list(G=G_seq, T=bT.mean) )
+mu.mean <- apply( mu , 2, mean )
+mu.PI <- apply( mu , 2 , PI, 0.95 )
+
+plot( W ~ G , data=d , col=rangi2 )
+lines( G_seq , mu.mean , lwd=2 )
+shade( mu.PI , G_seq )
+```
+
+- The left plot shows a strong positive correlation between territory size and body weight. 
+- The right plots shows a strong negative correlation between group size and body weight.
+- The body weight is correlated with both but in opposite directions. It is a masked relationship.
+
+## 5H3.
+
+Given: Foxes data.
+
+Want: Multiple regression of the influence of average food (F) and groupsize (G) on body weight (W) compared to multiple regression of the influence of average food (F), groupsize (G) and territory size (T) on body weight (W).
+
+Sol.:
+
+```{r}
+d$W <- standardize( d$weight )
+d$G <- standardize( d$groupsize )
+d$F <- standardize( d$avgfood )
+d$T <- standardize( d$area )
+
+mFG <- quap(
+    alist(
+        W ~ dnorm( mu , sigma ) ,
+        mu <- a + bF*F + bG*G,
+        c(a,bF,bG) ~ dnorm( 0 , 0.5 ) ,
+        sigma ~ dexp( 1 )
+    ) , data = d )
+
+precis(mFG)
+```
+```{r}
+mu <- link( mFG )
+
+mu_mean <- apply( mu , 2 , mean )
+mu_PI <- apply( mu , 2 , PI )
+
+D_sim <- sim( mFG , n=1e4 )
+D_PI <- apply( D_sim , 2 , PI )
+
+plot( mu_mean ~ d$W , col=rangi2 , ylim=range(mu_PI) ,
+    xlab="Observed W" , ylab="Predicted W" )
+abline( a=0 , b=1 , lty=2 )
+for ( i in 1:nrow(d) ) lines( rep(d$W[i],2) , mu_PI[,i] , col=rangi2 )
+mtext("mFG")
+```
+
+
+```{r}
+mFGT <- quap(
+    alist(
+        W ~ dnorm( mu , sigma ) ,
+        mu <- a + bF*F + bG*G + bT*T,
+        c(a,bF,bG,bT) ~ dnorm( 0 , 0.5 ) ,
+        sigma ~ dexp( 1 )
+    ) , data = d )
+
+precis(mFGT)
+```
+
+```{r}
+mu <- link( mFGT )
+
+mu_mean <- apply( mu , 2 , mean )
+mu_PI <- apply( mu , 2 , PI )
+
+D_sim <- sim( mFGT , n=1e4 )
+D_PI <- apply( D_sim , 2 , PI )
+
+plot( mu_mean ~ d$W , col=rangi2 , ylim=range(mu_PI) ,
+    xlab="Observed W" , ylab="Predicted W" )
+abline( a=0 , b=1 , lty=2 )
+for ( i in 1:nrow(d) ) lines( rep(d$W[i],2) , mu_PI[,i] , col=rangi2 )
+mtext("mFGT")
+```
+
+- The posterior prediction plots don't show a clear winner. Therefore the simpler model (mFG) should be selected.
