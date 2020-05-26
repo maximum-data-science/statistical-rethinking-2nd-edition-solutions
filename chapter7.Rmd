@@ -1,0 +1,528 @@
+---
+title: "Chapter 7"
+author: "jim108@gmx.net"
+date: "5/24/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(rethinking)
+```
+
+## 7E1.
+
+Want: Three motivating criteria that define information entropy.
+
+Sol.:
+
+1. Continuous function $H(p)$.
+2. High number of different states results in a high value of the function. Low number of different states results in a low value.
+3. Uncertainty should be additive.
+
+## 7E2.
+Given: Coin: Probabilities (heads,tails) $p=(0.7,0.3)$.
+
+Want: $H(p)$.
+
+Sol.:
+
+$H(p) = - E_p \log p = -(0.7\log 0.7 + 0.3\log 0.3) \approx 0.61$.
+
+## 7E3.
+Given: 4-sided die: Probabilities $p=(0.2, 0.25, 0.25, 0.3)$.
+
+Want: $H(p)$.
+
+Sol.:
+
+$H(p) = - E_p \log p = -(0.2\log 0.2 + 2*0.25\log 0.25 + 0.3\log 0.3) \approx 1.38$.
+
+## 7E4.
+Given: 4-sided die: Probabilities $p=(\frac{1}{3}, \frac{1}{3}, \frac{1}{3}, 0)$.
+
+Want: $H(p)$.
+
+Sol.:
+
+$H(p) = - E_p \log p = -(3*\frac{1}{3}\log \frac{1}{3} + 0) \approx 1.10$.
+
+## 7M1.
+
+Want: Definitions of AIC and WAIC. Which of these criteria is most
+general? Which assumptions are required to transform the more general criterion into a less general one?
+
+Sol.:
+
+$AIC = D_{train} + 2p = -2lppd + 2p$.
+
+$WAIC = -2 ( lppd - \sum_i var_{\theta}\log p (y_i\mid \theta))$.
+
+$WAIC$ is more general. To use AIC, the following assumptions have to be met:
+
+1. Prios have to be overwelmed by the likelihood.
+1. The posterior distribution has to be Gaussian.
+1. $N\gg k$.
+
+## 7M2.
+
+Want: Difference between model selection and comparison.
+
+Sol.:
+
+Model comparision does not include: infering causal relationships.
+
+## 7M3.
+
+Given: Comparing models with the information criterion.
+
+Want: Why must all models be fit to exactly the same observations?
+
+Sol.:
+
+```{r}
+set.seed(71)
+
+create_fungus_data <- function(N){
+  # simulate initial Rvs
+  h0 <- rnorm(N,10,2)
+  
+  # assign treatments and simulate fungus and growth
+  treatment <- rep( 0:1 , each=N/2 )
+  fungus <- rbinom( N , size=1 , prob=0.5 - treatment*0.4 )
+  h1 <- h0 + rnorm(N, 5 - 3*fungus)
+  
+  # compose a clean data frame
+  d <- data.frame( h0=h0 , h1=h1 , treatment=treatment , fungus=fungus )
+  return(d)  
+}
+
+fungus_model_list <- alist(
+        h1 ~ dnorm( mu , sigma ),
+        mu <- h0 * p,
+        p <- a + bt*treatment,
+        a ~ dlnorm( 0 , 0.2 ),
+        bt ~ dnorm( 0 , 0.5 ),
+        sigma ~ dexp( 1 )
+    )
+
+create_waic <- function(N){
+  dN <- create_fungus_data(N)
+  mN <- quap(fungus_model_list, data=dN )
+  return(WAIC(mN))  
+}  
+
+N_seq <- seq( from=10 , to=50 , length.out=5 )
+
+waics <- sapply(N_seq, create_waic)
+waics
+```
+
+- WAIC/ lppd increases with the number of observations.
+
+## 7M4.
+Given: Comparing models with PSIS or WAIC.
+
+Want: What happens to the effective number of parameters as a prior becomes more concentrated? Why?
+
+
+Sol.:
+
+```{r}
+d <- create_fungus_data(100)
+
+
+fungus_model_list <- alist(
+        h1 ~ dnorm( mu , sigma ),
+        mu <- h0 * p,
+        p <- a + bt*treatment,
+        a ~ dlnorm( 0 , 0.2 ),
+        bt ~ dnorm( 0 , b_var ),
+        sigma ~ dexp( 1 )
+    )
+
+N <- 100
+d <- create_fungus_data(N)
+
+d$b_var <- 0.1
+m0.1 <- quap(fungus_model_list, data=d )
+
+d$b_var <- 0.5
+m0.5 <- quap(fungus_model_list, data=d )
+
+
+d$b_var <- 1
+m1 <- quap(fungus_model_list, data=d )
+
+compare(m0.1,m0.5,m1)
+```
+
+- The effective number of parameters decrease if the prior gets more concentrated.
+- The more concentrated the prior the more simpler the functions the less parameters.
+
+## 7M5.
+
+Want: Why informative priors reduce overfitting?
+
+Sol.: 
+
+They exclude unrealistic/ extreme values, therefore reducing the function pool.
+
+## 7M6.
+
+Want: Why overly informative priors result in underfitting.
+
+Sol.:
+
+The function pool is reduced to a degree that the pattern to fit cannot expressed by a function from it.
+
+## 7H1.
+
+```{r}
+data("Laffer")
+d<- Laffer
+head(d)
+```
+
+```{r}
+plot(tax_revenue ~ tax_rate, d)
+```
+
+```{r}
+d$Rv <- standardize(d$tax_revenue)
+d$Ra <- standardize(d$tax_rate)
+
+tax_rate_bar <- mean(d$tax_rate)
+
+m7H1_l <- quap(
+    alist(
+        Rv ~ dnorm( mu , sigma ) ,
+        mu <- a + b*Ra,
+        a ~ dlnorm( 0 , 1 ) ,
+        b ~ dnorm( 0 , 0.5 ) ,
+        sigma ~ dexp( 1 )
+    ) , data = d )
+
+precis( m7H1_l )
+```
+
+
+```{r}
+Ra.seq <- seq( from=-3, to=3, length.out = 40)
+pred_dat <- list(Ra=Ra.seq)
+mu <- link(m7H1_l, data=pred_dat)
+mu.mean <- apply( mu, 2, mean)
+mu.PI <- apply( mu, 2, PI, prob=0.89)
+sim.Rv <- sim(m7H1_l, data=pred_dat)
+Rv.PI <- apply( sim.Rv, 2, PI, prob=0.89)
+
+
+plot(Rv ~ Ra, d, col=col.alpha(rangi2,0.5))
+lines( Ra.seq, mu.mean)
+shade( mu.PI, Ra.seq)
+shade( Rv.PI, Ra.seq)
+```
+
+```{r}
+d$Ra_2 <- d$tax_rate^2
+
+m7H1_2 <- quap(
+    alist(
+        Rv ~ dnorm( mu , sigma ) ,
+        mu <- a + b1*Ra + b2*Ra_2 ,
+        a ~ dnorm( 0 , 1 ) ,
+        b1 ~ dlnorm( 0 , 0.5 ) ,
+        b2 ~ dnorm( 0 , 0.5 ) ,
+        sigma ~ dexp( 1 )
+    ) , data=d )
+
+precis( m7H1_2 )
+```
+
+```{r}
+Ra.seq <- seq( from=min(d$Ra) , to=max(d$Ra) , length.out=30 )
+pred_dat <- list( Ra=Ra.seq , Ra_2=Ra.seq^2 )
+mu <- link( m7H1_2 , data=pred_dat )
+mu.mean <- apply( mu , 2 , mean )
+mu.PI <- apply( mu , 2 , PI , prob=0.89 )
+sim.Rv <- sim( m7H1_2 , data=pred_dat )
+Rv.PI <- apply( sim.Rv , 2 , PI , prob=0.89 )
+
+plot( Rv ~ Ra , d , col=col.alpha(rangi2,0.5) )
+lines( Ra.seq , mu.mean )
+shade( mu.PI , Ra.seq )
+shade( Rv.PI , Ra.seq )
+```
+
+```{r}
+compare(m7H1_l, m7H1_2)
+```
+
+- The curved model does not use the squared parameter, but it has a higher intercept and a higher slope. 
+- The WAIC between both models is almost identical.
+- The tax revenue increase with the tax rate.
+
+## 7H2.
+Given:
+
+Sol.:
+
+```{r}
+set.seed(24071847)
+PSIS_m7H2 <- PSIS(m7H1_2,pointwise=TRUE)
+set.seed(24071847)
+WAIC_m7H2 <- WAIC(m7H1_2,pointwise=TRUE)
+plot( PSIS_m7H2$k , WAIC_m7H2$penalty , xlab="PSIS Pareto k" ,
+    ylab="WAIC penalty" , col=rangi2 , lwd=2 )
+text(WAIC_m7H2$penalty ~ PSIS_m7H2$k , labels=rownames(d),data=d, cex=0.9, font=2)
+```
+
+```{r}
+m7H1_2t <- quap(
+    alist(
+        Rv ~ dstudent( 2, mu , sigma ) ,
+        mu <- a + b1*Ra + b2*Ra_2 ,
+        a ~ dnorm( 0 , 1 ) ,
+        b1 ~ dlnorm( 0 , 0.5 ) ,
+        b2 ~ dnorm( 0 , 0.5 ) ,
+        sigma ~ dexp( 1 )
+    ) , data=d )
+
+precis( m7H1_2t )
+```
+
+```{r}
+set.seed(24071847)
+PSIS_m7H2t <- PSIS(m7H1_2t,pointwise=TRUE)
+set.seed(24071847)
+WAIC_m7H2t <- WAIC(m7H1_2t,pointwise=TRUE)
+plot( PSIS_m7H2t$k , WAIC_m7H2t$penalty , xlab="PSIS Pareto k" ,
+    ylab="WAIC penalty" , col=rangi2 , lwd=2 )
+text(WAIC_m7H2t$penalty ~ PSIS_m7H2t$k , labels=rownames(d),data=d, cex=0.9, font=2)
+```
+
+```{r}
+Ra.seq <- seq( from=min(d$Ra) , to=max(d$Ra) , length.out=30 )
+pred_dat <- list( Ra=Ra.seq , Ra_2=Ra.seq^2 )
+mu <- link( m7H1_2t , data=pred_dat )
+mu.mean <- apply( mu , 2 , mean )
+mu.PI <- apply( mu , 2 , PI , prob=0.89 )
+sim.Rv <- sim( m7H1_2t , data=pred_dat )
+Rv.PI <- apply( sim.Rv , 2 , PI , prob=0.89 )
+
+plot( Rv ~ Ra , d , col=col.alpha(rangi2,0.5) )
+lines( Ra.seq , mu.mean )
+shade( mu.PI , Ra.seq )
+shade( Rv.PI , Ra.seq )
+text(Rv ~ Ra, labels=rownames(d),data=d, cex=0.9, font=2)
+```
+
+- The robust regression with the Student's t distribution changed the regression line very much towards the outlier point (12). Now, around half of the values are not part of the 89 % interval of a Gaussian distribution anymore.
+
+## 7H3.
+Given:
+
+```{r}
+birds <- data.frame("Species_A" = c(0.2,0.8,0.05), 
+                    "Species_B" = c(0.2,0.1,0.15),
+                    "Species_C" = c(0.2,0.05,0.7),
+                    "Species_D" = c(0.2,0.025,0.05),
+                    "Species_E" = c(0.2,0.025,0.05))
+row.names(birds) <- c("Island_1","Island_2","Island_3")
+birds
+```
+
+Want: Entropy.
+
+Sol.:
+
+```{r}
+d <- birds
+entropy <- function(p) -sum(p*log(p))
+row.sums <- apply(d, 1,  entropy)
+row.sums
+```
+
+
+Want: Use each island’s bird distribution to predict the other two.
+This means to compute the K-L Divergence of each island from the others, treating each island as if it were a statistical model of the other islands. You should end up with 6 different K-L Divergence values. Which island predicts the others best? Why?
+
+```{r}
+d <- birds
+
+D_KL <- function(p,q) sum(p*(log(p/q)))
+d_12 <- D_KL(d[1,], d[2,])
+d_13 <- D_KL(d[1,], d[3,])
+d_21 <- D_KL(d[2,], d[1,])
+d_23 <- D_KL(d[2,], d[3,])
+d_31 <- D_KL(d[3,], d[1,])
+d_32 <- D_KL(d[3,], d[2,])
+d_mat <- matrix(c(0, d_12,d_13,d_21,0,d_23,d_31,d_32,0), nrow = 3, ncol = 3)
+d_mat
+```
+
+- Island 1 predicts the others best.
+- Island 1 has the highest entropy.
+- It has the highest entropy because the probabilities are uniform distributed across the species.
+
+## 7H4.
+Given: Happiness simulation.
+
+```{r}
+d <- sim_happiness( seed=1977 , N_years=1000 )
+unmarried_happiness <- mean(d[which(d$married==0),]$happiness)
+married_happiness <- mean(d[which(d$married==1),]$happiness)
+unmarried_happiness
+```
+```{r}
+married_happiness
+```
+
+```{r}
+pairs(d, lower.panel=NULL)
+```
+
+
+```{r}
+## R code 6.22
+d2 <- d[ d$age>17 , ] # only adults
+d2$A <- ( d2$age - 18 ) / ( 65 - 18 )
+
+## R code 6.23
+d2$mid <- d2$married + 1
+m6.9 <- quap(
+    alist(
+        happiness ~ dnorm( mu , sigma ),
+        mu <- a[mid] + bA*A,
+        a[mid] ~ dnorm( 0 , 1 ),
+        bA ~ dnorm( 0 , 2 ),
+        sigma ~ dexp(1)
+    ) , data=d2 )
+precis(m6.9,depth=2)
+```
+
+```{r}
+## R code 6.24
+m6.10 <- quap(
+    alist(
+        happiness ~ dnorm( mu , sigma ),
+        mu <- a + bA*A,
+        a ~ dnorm( 0 , 1 ),
+        bA ~ dnorm( 0 , 2 ),
+        sigma ~ dexp(1)
+    ) , data=d2 )
+precis(m6.10)
+```
+
+Want: Compare these two models using WAIC (or LOO, they will produce identical
+results). Which model is expected to make better predictions? Which model provides the correct causal inference about the influence of age on happiness? Can you explain why the answers to these two questions disagree?
+
+Sol.:
+
+- Intercept and slope are 0 at m6.10. It is a very simple model for 3 variables. That's suspicious, I guess it should make worse pedictions unless the variables are independent.
+
+```{r}
+compare(m6.9, m6.10)
+```
+
+- m6.9 has the best WAIC value.
+- The standard error of dWAIC (difference to the best model's WAIC) is about 10 times smaller than the actual difference to the best model's WAIC (dSE < dWAIC) for m6.10 to m6.9. 
+- Thus, m6.9 is significatly better than m6.10 according to WAIC.
+- m6.10 answers the question of "influence of age on happiness?".
+- Conditioned on marriage m6.9 makes better predictions than m6.10, but it does not adhere to the actual question. 
+
+## 7H5.
+Given: Foxes data.
+
+Want: Compare 
+
+1. avgfood(F) + groupsize(G) + area(T)
+1. avgfood(F) + groupsize(G)
+1. groupsize(G) + area(T)
+1. area(T)
+
+Sol.:
+
+```{r}
+data("foxes")
+d <- foxes
+pairs(d[,c("avgfood","groupsize","area", "weight")], lower.panel=NULL)
+```
+```{r}
+head(d)
+```
+
+
+```{r}
+d$F <- standardize( d$avgfood )
+d$W <- standardize( d$weight )
+d$G <- standardize( d$groupsize )
+d$T <- standardize( d$area )
+
+
+mFGT <- quap(
+    alist(
+        W ~ dnorm( mu , sigma ) ,
+        mu <- a + bF*F + bG*G + bT*T,
+        c(a,bF,bG,bT) ~ dnorm( 0 , 0.5 ) ,
+        sigma ~ dexp( 1 )
+    ) , data = d )
+
+mFG <- quap(
+    alist(
+        W ~ dnorm( mu , sigma ) ,
+        mu <- a + bF*F + bG*G ,
+        c(a,bF,bG) ~ dnorm( 0 , 0.5 ) ,
+        sigma ~ dexp( 1 )
+    ) , data = d )
+
+mGT <- quap(
+    alist(
+        W ~ dnorm( mu , sigma ) ,
+        mu <- a + bG*G + bT*T,
+        c(a,bG,bT) ~ dnorm( 0 , 0.5 ) ,
+        sigma ~ dexp( 1 )
+    ) , data = d )
+
+mF <- quap(
+    alist(
+        W ~ dnorm( mu , sigma ) ,
+        mu <- a + bF*F ,
+        c(a,bF) ~ dnorm( 0 , 0.5 ) ,
+        sigma ~ dexp( 1 )
+    ) , data = d )
+
+mT <- quap(
+    alist(
+        W ~ dnorm( mu , sigma ) ,
+        mu <- a + bT*T ,
+        c(a,bT) ~ dnorm( 0 , 0.5 ) ,
+        sigma ~ dexp( 1 )
+    ) , data = d )
+
+compare(mFGT,mFG,mGT,mF,mT)
+```
+```{r}
+plot(compare(mFGT,mFG,mGT,mF,mT))
+```
+
+- F, G, T are all positively correlated according to the pairs plot.
+- mFGT makes the best predictions according to WAIC.
+- The standard error of dWAIC (difference to the best model's WAIC) is greater than the actual difference to the best model's WAIC (dSE > dWAIC) for mGT and mFG. 
+- The standard error of dWAIC (difference to the best model's WAIC) is smaller than the actual difference to the best model's WAIC (dSE < dWAIC) for mF and mT. 
+- Thus, the differences between 2 or 3 perdictor variables are small.
+- Thus, the differences between 2 or 3 and 1 perdictor variables is relatively big.
+
+## Rethinking package/RStudio issues
+
+- `plot(compare(..))` shows the pairs plot inside RStudio but the indented lines plot after html conversion. (https://github.com/rmcelreath/rethinking/issues/22)
+- The precis plot can be fixed by `precis_plot(precis(...))`.
+- Reinstalling did not solve the issue.
+- Clearing all session variables did not solve the issue.
+
+```{r}
+#devtools::install_github("rmcelreath/rethinking", force = TRUE)
+#rm(list = ls())
+sessionInfo()
+```
+
