@@ -1,0 +1,468 @@
+---
+title: "Chapter 8"
+author: "jim108@gmx.net"
+date: "5/26/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(rethinking)
+```
+
+## 8E1.
+For each of the causal relationships below, name a hypothetical third variable that would lead to an interaction effect.
+
+1. Bread dough rises because of yeast.
+1. Education leads to higher income.
+1. Gasoline makes a car go.
+
+Sol.:
+
+1. Bread dough rises because of yeast **and water**.
+1. Education and **a good neighborhood** leads to higher income.
+1. Gasoline **and traction** makes a car go.
+
+
+## 8E2.
+Which of the following explanations invokes an interaction?
+
+1. Caramelizing onions requires cooking over low heat (H) and making sure the onions do not
+dry out (W).
+1. A car will go faster when it has more cylinders (C) or when it has a better fuel injector (I).
+1. Most people acquire their political beliefs from their parents (P), unless they get them instead from their friends (F).
+1. Intelligent animal species tend to be either highly social(S) or have manipulative appendages (hands, tentacles, etc.) (M).
+
+
+Sol.:
+
+1. Interaction between heat and water.
+2. No interaction because a cylinder extra does make the fuel injector better or worse.
+3. Interaction because parents can influence the choise of friends and viced versa.
+4. Interaction because manipulative appendages like hands for example can influence social interactions.
+
+## 8E3.
+
+Want: Linar model of 8E2.
+
+Sol.:
+Only the interaction equation is stated.
+
+1. $\mu_i = \alpha + \beta_H H_i + \beta_{HW} H_i W_i + \beta_W W_i$.
+1. $\mu_i = \alpha + \beta_C C_i + \beta_F F_i$.
+1. $\mu_i = \alpha + \beta_P P_i + \beta_{PF} P_i F_i + \beta_F F_i$.
+1. $\mu_i = \alpha + \beta_S S_i + \beta_{SM} S_i M_i + \beta_M M_i$.
+
+
+## 8M1.
+
+Given:  Tulip data + temperature (T) $\in$ {cold(0), hot(1)}. Normal plant growth at cold temperatures. No plant growth at hot temperature.
+
+Want: Interaction model.
+
+Sol.:
+
+CIT[i] = T + 1
+
+$\mu_i = \alpha_{CIT[i]} + \beta_{W CIT[i]} W_i + \beta_{WS CIT[i]} S_i W_i + \beta_{S CIT[i]} S_i$.
+
+## 8M2.
+
+Given: 8M1 + zero plant growth if the temperature is hot.
+
+Want: regression equation.
+
+Sol.:
+
+$\mu_i = (T==1)*(\alpha + \beta_{W} W_i + \beta_{WS} S_i W_i + \beta_{S} S_i)$.
+
+
+## 8M3.
+
+Given: Raven population size (R), wolf population (W), food supply of wolfs (F), raven co-feed at wolfs food.
+
+Want: Hypothetical data set. Linear? Why?
+
+Sol.:
+
+```{r}
+rho <- 0.05
+F <- rnorm(100,10)
+W <- rnorm(F,1)
+R <- rho * W
+
+par(mfrow=c(1,2))
+plot(W ~ F)
+plot(R ~ F)
+```
+
+
+## 8H1.
+
+Given: Tulip data.
+
+Want: Include ´bed´ as a main effect.
+
+Sol.:
+```{r}
+data(tulips)
+d <- tulips
+```
+
+```{r}
+d$blooms_std <- d$blooms / max(d$blooms)
+d$water_cent <- d$water - mean(d$water)
+d$shade_cent <- d$shade - mean(d$shade)
+d$cib <- as.numeric(d$bed)
+
+m8H1 <- quap(
+    alist(
+        blooms_std ~ dnorm( mu , sigma ) ,
+        mu <- a[cib] + bw[cib]*water_cent + bs[cib]*shade_cent + bws[cib]*water_cent*shade_cent ,
+        a[cib] ~ dnorm( 0.5 , 0.25 ) ,
+        bw[cib] ~ dnorm( 0 , 0.25 ) ,
+        bs[cib] ~ dnorm( 0 , 0.25 ) ,
+        bws[cib] ~ dnorm( 0 , 0.25 ) ,
+        sigma ~ dexp( 1 )
+    ) , data=d )
+
+precis(m8H1, depth = 2)
+```
+
+
+## 8H2.
+
+Given: 8H1.
+
+Want: Compare 8H1 WAIC to a model without bed.
+
+Sol.:
+
+```{r}
+m8.5 <- quap(
+    alist(
+        blooms_std ~ dnorm( mu , sigma ) ,
+        mu <- a + bw*water_cent + bs*shade_cent + bws*water_cent*shade_cent ,
+        a ~ dnorm( 0.5 , 0.25 ) ,
+        bw ~ dnorm( 0 , 0.25 ) ,
+        bs ~ dnorm( 0 , 0.25 ) ,
+        bws ~ dnorm( 0 , 0.25 ) ,
+        sigma ~ dexp( 1 )
+    ) , data=d )
+
+precis(m8.5)
+```
+
+```{r}
+compare(m8H1, m8.5 )
+```
+
+- The model without ´bed´ makes better predictions according to WAIC.
+- The std. error of the difference to the best model is higher than the difference to the best model.
+- Thus, the comarison is not reliable.
+
+## 8H3.
+
+Given: rugged data.
+
+Want: (a) Measure relative influence of each country with WAIC pointwise penalties and PSIS.By these criteria, is Seychelles influencing the results? Are there other nations that are relatively influential? Explain why?
+
+Sol.:
+
+
+```{r}
+data(rugged)
+d <- rugged
+d$log_gdp <- log(d$rgdppc_2000)
+dd <- d[ complete.cases(d$rgdppc_2000) , ]
+dd$log_gdp_std <- dd$log_gdp / mean(dd$log_gdp)
+dd$rugged_std <- dd$rugged / max(dd$rugged)
+dd$cid <- ifelse( dd$cont_africa==1 , 1 , 2 )
+```
+
+
+```{r}
+m8.3 <- quap(
+    alist(
+        log_gdp_std ~ dnorm( mu , sigma ) ,
+        mu <- a[cid] + b[cid]*( rugged_std - 0.215 ) ,
+        a[cid] ~ dnorm( 1 , 0.1 ) ,
+        b[cid] ~ dnorm( 0 , 0.3 ) ,
+        sigma ~ dexp( 1 )
+    ) , data=dd )
+precis( m8.3 , depth=2 )
+```
+```{r}
+d.A1 <- dd[ dd$cid==1 , ]
+plot( d.A1$rugged_std , d.A1$log_gdp_std , pch=16 , col=rangi2 ,
+    xlab="ruggedness (standardized)" , ylab="log GDP (as proportion of mean)" ,
+    xlim=c(0,1) )
+rugged.seq <- seq( from=-0.1 , to=1.1 , length.out=30 )
+mu <- link( m8.3 , data=data.frame( cid=1 , rugged_std=rugged.seq ) )
+mu_mean <- apply( mu , 2 , mean )
+mu_ci <- apply( mu , 2 , PI , prob=0.97 )
+lines( rugged.seq , mu_mean , lwd=2 )
+shade( mu_ci , rugged.seq , col=col.alpha(rangi2,0.3) )
+mtext("African nations")
+dsyc <- dd[ dd$isocode=="SYC",]
+text(dsyc$log_gdp_std~dsyc$rugged_std, labels=country, data=dsyc, cex=0.9, font=2, pos=4)
+```
+
+```{r}
+dd$penalty <- WAIC(m8.3, pointwise = TRUE)$penalty
+dd$k <- PSIS( m8.3, pointwise = TRUE)$k
+measures <- dd[which(dd$cid == 1),c("country", "penalty", "k")]
+measures <- measures[with(measures, order(-penalty)), ] 
+head(measures)
+```
+```{r}
+plot( dd$k , dd$penalty , xlab="PSIS Pareto k" ,
+    ylab="WAIC penalty" , col=rangi2 , lwd=2 )
+```
+
+- Seychelles Pareto k is above 0.5 which makes it a very influentual point.
+- Its WIAC penalty and Pareto k is about twice as high as the next highest influentual country Lesotho.
+
+Want: (b)Modify m8.5 to use a Student-t distribution with ν = 2. Does this change the results in a substantial way?
+
+Sol.:
+
+```{r}
+m8.3t <- quap(
+    alist(
+        log_gdp_std ~ dstudent( 2, mu , sigma ) ,
+        mu <- a[cid] + b[cid]*( rugged_std - 0.215 ) ,
+        a[cid] ~ dnorm( 1 , 0.1 ) ,
+        b[cid] ~ dnorm( 0 , 0.3 ) ,
+        sigma ~ dexp( 1 )
+    ) , data=dd )
+precis( m8.3t , depth=2 )
+```
+```{r}
+dd$penalty <- WAIC(m8.3t, pointwise = TRUE)$penalty
+dd$k <- PSIS( m8.3t, pointwise = TRUE)$k
+measures <- dd[which(dd$cid == 1),c("country", "penalty", "k")]
+measures <- measures[with(measures, order(-penalty)), ]
+head(measures)
+```
+
+
+```{r}
+plot( dd$k , dd$penalty , xlab="PSIS Pareto k" ,
+    ylab="WAIC penalty" , col=rangi2 , lwd=2 )
+```
+
+```{r}
+par(mfrow=c(1,2))
+d.A1 <- dd[ dd$cid==1 , ]
+plot( d.A1$rugged_std , d.A1$log_gdp_std , pch=16 , col=rangi2 ,
+    xlab="ruggedness (standardized)" , ylab="log GDP (as proportion of mean)" ,
+    xlim=c(0,1) )
+rugged.seq <- seq( from=-0.1 , to=1.1 , length.out=30 )
+mu <- link( m8.3 , data=data.frame( cid=1 , rugged_std=rugged.seq ) )
+mu_mean <- apply( mu , 2 , mean )
+mu_ci <- apply( mu , 2 , PI , prob=0.97 )
+lines( rugged.seq , mu_mean , lwd=2 )
+shade( mu_ci , rugged.seq , col=col.alpha(rangi2,0.3) )
+mtext("African nations (Gaussian)")
+dsyc <- dd[ dd$isocode=="SYC",]
+text(dsyc$log_gdp_std~dsyc$rugged_std, labels=country, data=dsyc, cex=0.9, font=2, pos=4)
+
+
+d.A1 <- dd[ dd$cid==1 , ]
+plot( d.A1$rugged_std , d.A1$log_gdp_std , pch=16 , col=rangi2 ,
+    xlab="ruggedness (standardized)" , ylab="log GDP (as proportion of mean)" ,
+    xlim=c(0,1) )
+rugged.seq <- seq( from=-0.1 , to=1.1 , length.out=30 )
+mu <- link( m8.3t , data=data.frame( cid=1 , rugged_std=rugged.seq ) )
+mu_mean <- apply( mu , 2 , mean )
+mu_ci <- apply( mu , 2 , PI , prob=0.97 )
+lines( rugged.seq , mu_mean , lwd=2 )
+shade( mu_ci , rugged.seq , col=col.alpha(rangi2,0.3) )
+mtext("African nations (Student-t)")
+dsyc <- dd[ dd$isocode=="SYC",]
+text(dsyc$log_gdp_std~dsyc$rugged_std, labels=country, data=dsyc, cex=0.9, font=2, pos=4)
+```
+
+- The WAIC penalty is now reduced from about 0.5 to 0.3.
+- The Parate k is now reduced from about 0.5 to 0.2.
+- The 97% interval for the posterier values of the robust model does not look significantly different than the non-robust model.
+
+## 8H4.
+Given: Nettle data on language diversity in 74 nations.
+
+Want: Verify claims. Consider log(area) as a covariate (not an interaction) for (a) and (b). Interpret results.
+
+Claims:
+
+(a) Language diversity, as measured by log(´lang.per.cap´), is positively associated with the average length of the growing season, ´mean.growing.season´.
+
+```{r}
+data("nettle")
+
+d <- nettle
+
+d$lang.per.cap <- d$num.lang / d$k.pop
+
+summary(d)
+```
+```{r}
+d$F <- d$mean.growing.season / max(d$mean.growing.season)
+log_lang <- log(d$lang.per.cap)
+d$L <- log_lang / min(log_lang)
+
+plot(d$F, d$L, pch=16 , col=rangi2, xlab="F" , ylab="L" )
+```
+
+```{r}
+set.seed(1)
+m8H4a<- quap(
+    alist(
+        L ~ dnorm( mu , sigma ) ,
+        mu <- a + b*F ,
+        a ~ dnorm( 0.5 , 0.2 ) ,
+        b ~ dnorm( 0 , 0.2 ) ,
+        sigma ~ dexp( 1 )
+    ) , data=d )
+
+prior <- extract.prior( m8H4a)
+
+plot( NULL , xlim=c(0,1) , ylim=c(min(d$L),max(d$L)) ,
+    xlab="F" , ylab="L" )
+abline( h=min(d$L) , lty=2 )
+abline( h=max(d$L) , lty=2 )
+
+F_seq <- seq( from=min(d$F) , to=max(d$F) , length.out=30 )
+mu <- link( m8H4a, post=prior , data=data.frame(F=F_seq) )
+for ( i in 1:50 ) lines( F_seq , mu[i,] , col=col.alpha("black",0.3) )
+```
+```{r}
+set.seed(24071847)
+PSIS_m8H4a <- PSIS(m8H4a,pointwise=TRUE)
+set.seed(24071847)
+WAIC_m8H4a <- WAIC(m8H4a,pointwise=TRUE)
+plot( PSIS_m8H4a$k , WAIC_m8H4a$penalty , xlab="PSIS Pareto k" ,
+    ylab="WAIC penalty" , col=rangi2 , lwd=2, xlim=c(-0.5,0.5) )
+```
+
+```{r}
+plot(d$F, d$L, pch=16 , col=rangi2, xlab="F" , ylab="L" )
+mu <- link( m8H4a, data=data.frame(F=F_seq ) )
+mu_mean <- apply( mu , 2 , mean )
+mu_ci <- apply( mu , 2 , PI , prob=0.97 )
+lines( F_seq , mu_mean , lwd=2 )
+shade( mu_ci , F_seq , col=col.alpha(rangi2,0.3) )
+```
+
+```{r}
+precis(m8H4a)
+```
+
+The evaluation does not support this claim.
+
+
+(b) Language diversity is negatively associated with the standard deviation of length of growing season, ´sd.growing.season´. This hypothesis follows from uncertainty in harvest favoring social insurance through larger social networks and therefore fewer
+languages.
+
+```{r}
+d$S <- d$sd.growing.season / max(d$sd.growing.season)
+log_lang <- log(d$lang.per.cap)
+d$L <- log_lang / min(log_lang)
+
+plot(d$S, d$L, pch=16 , col=rangi2, xlab="S" , ylab="L" )
+```
+
+```{r}
+set.seed(1)
+m8H4b <- quap(
+    alist(
+        L ~ dnorm( mu , sigma ) ,
+        mu <- a + b*S ,
+        a ~ dnorm( 0.5 , 0.2 ) ,
+        b ~ dnorm( 0 , 0.2 ) ,
+        sigma ~ dexp( 1 )
+    ) , data=d )
+
+prior <- extract.prior( m8H4b )
+
+plot( NULL , xlim=c(0,1) , ylim=c(min(d$L),max(d$L)) ,
+    xlab="S" , ylab="L" )
+abline( h=min(d$L) , lty=2 )
+abline( h=max(d$L) , lty=2 )
+
+S_seq <- seq( from=min(d$S) , to=max(d$S) , length.out=30 )
+mu <- link( m8H4b , post=prior , data=data.frame(S=S_seq) )
+for ( i in 1:50 ) lines( S_seq , mu[i,] , col=col.alpha("black",0.3) )
+```
+```{r}
+set.seed(24071847)
+PSIS_m8H4b <- PSIS(m8H4b,pointwise=TRUE)
+set.seed(24071847)
+WAIC_m8H4b <- WAIC(m8H4b,pointwise=TRUE)
+plot( PSIS_m8H4b$k , WAIC_m8H4b$penalty , xlab="PSIS Pareto k" ,
+    ylab="WAIC penalty" , col=rangi2 , lwd=2, xlim=c(-0.5,0.5) )
+```
+
+
+```{r}
+plot(d$S, d$L, pch=16 , col=rangi2, xlab="S" , ylab="L" )
+mu <- link( m8H4b , data=data.frame(S=S_seq ) )
+mu_mean <- apply( mu , 2 , mean )
+mu_ci <- apply( mu , 2 , PI , prob=0.97 )
+lines( S_seq , mu_mean , lwd=2 )
+shade( mu_ci , S_seq , col=col.alpha(rangi2,0.3) )
+```
+
+The evaluation does not support this claim.
+
+(c) ´mean.growing.season´ and ´sd.growing.season´ interact to synergistically reduce language diversity.
+
+```{r}
+set.seed(1)
+m8H4c <- quap(
+    alist(
+        L ~ dnorm( mu , sigma ) ,
+        mu <- a + bF*F + bFS*F*S + bS*S ,
+        a ~ dnorm( 0.5 , 0.2 ) ,
+        c(bF,bFS, bS) ~ dnorm( 0 , 0.2 ) ,
+        sigma ~ dexp( 1 )
+    ) , data=d )
+
+prior <- extract.prior( m8H4c )
+
+par(mfrow=c(1,2)) # 3 plots in 1 row
+# 1. plot vary F
+plot( NULL , xlim=c(0,1) , ylim=c(min(d$L),max(d$L)) ,
+    xlab="F, S=0" , ylab="L" )
+abline( h=min(d$L) , lty=2 )
+abline( h=max(d$L) , lty=2 )
+
+F_seq <- seq( from=min(d$F) , to=max(d$F) , length.out=30 )
+mu <- link( m8H4c , post=prior , data=data.frame(S=0, F=F_seq) )
+for ( i in 1:50 ) lines( F_seq , mu[i,] , col=col.alpha("black",0.3) )
+
+# 1. plot vary S
+plot( NULL , xlim=c(0,1) , ylim=c(min(d$L),max(d$L)) ,
+    xlab="S, F=0" , ylab="L" )
+abline( h=min(d$L) , lty=2 )
+abline( h=max(d$L) , lty=2 )
+
+S_seq <- seq( from=min(d$S) , to=max(d$S) , length.out=30 )
+mu <- link( m8H4c , post=prior , data=data.frame(S=S_seq, F=0) )
+for ( i in 1:50 ) lines( S_seq , mu[i,] , col=col.alpha("black",0.3) )
+```
+
+```{r}
+set.seed(24071847)
+PSIS_m8H4c <- PSIS(m8H4c,pointwise=TRUE)
+set.seed(24071847)
+WAIC_m8H4c <- WAIC(m8H4c,pointwise=TRUE)
+plot( PSIS_m8H4c$k , WAIC_m8H4c$penalty , xlab="PSIS Pareto k" ,
+    ylab="WAIC penalty" , col=rangi2 , lwd=2, xlim=c(-0.5,0.5) )
+```
+
+```{r}
+precis(m8H4c)
+```
+
+- If there were no standard deviation in the growing season then: "The longer the growing season the less the language diversity." Standard deviation on its own increases the language diversity and in combination with the average length of the growing season increases the language diversity.
