@@ -96,6 +96,7 @@ par(mfrow=c(1,2))
 plot( samples )
 dens( samples )
 ```
+
 ```{r}
 HPDI( samples , prob=0.90 )
 ```

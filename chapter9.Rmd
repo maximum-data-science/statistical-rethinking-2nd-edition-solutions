@@ -1,0 +1,546 @@
+---
+title: "Chapter 9"
+author: "jim108@gmx.net"
+date: "6/2/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(rethinking)
+```
+
+## 9E1.
+
+Which of the following is a requirement of the simple Metropolis algorithm?
+1. The parameters must be discrete.
+1. The likelihood function must be Gaussian.
+1. The proposal distribution must be symmetric.
+
+Sol.: 3.
+
+## 9E2.
+
+Gibbs sampling is more efficient than the Metropolis algorithm. How does it achieve this extra efficiency? Are there any limitations to the Gibbs sampling strategy?
+
+Sol.: Gibbs sampling can be slow because the direction in which new points are sampled is limited.
+
+## 9E3.
+
+Which sort of parameters can Hamiltonian Monte Carlo not handle? Can you explain why?
+
+Sol.: Discrete parameters because it uses the gradient to predict a new point.
+
+## 9E4.
+
+Explain the difference between the effective number of samples, n_eff as calculated by Stan, and the actual number of samples.
+
+Sol.: The actual number of samples includes correlated samples. n_eff is an approximation of the number of independent samples.
+
+## 9E5.
+
+Which value should Rhat approach, when a chain is sampling the posterior distribution correctly?
+
+Sol.: 1
+
+## 9E6.
+
+Sketch a good trace plot for a Markov chain, one that is effectively sampling from the posterior distribution. What is good about its shape? Then sketch a trace plot for a malfunctioning Markov chain. What about its shape indicates malfunction?
+
+Sol.:
+
+```{r}
+y <- c(-1,1)
+```
+
+
+```{r, results = "hide", cache = TRUE}
+set.seed(11)
+m9.3 <- ulam(
+    alist(
+        y ~ dnorm( mu , sigma ) ,
+        mu <- alpha ,
+        alpha ~ dnorm( 1 , 10 ) ,
+        sigma ~ dexp( 1 )
+    ) , data=list(y=y) , chains=1 )
+```
+
+```{r}
+precis( m9.3 )
+```
+
+```{r}
+traceplot( m9.3)
+```
+
+- A good shape is indicated by values varying from one sample to the next quite a lot.
+
+```{r, results = "hide", cache = TRUE}
+set.seed(11)
+m9.2 <- ulam(
+    alist(
+        y ~ dnorm( mu , sigma ) ,
+        mu <- alpha ,
+        alpha ~ dnorm( 0 , 1000 ) ,
+        sigma ~ dexp( 0.0001 )
+    ) , data=list(y=y) , chains=1 )
+precis( m9.2 )
+```
+
+```{r}
+traceplot( m9.2)
+```
+
+- The Malfunction is indicated by samples stick a one value for some time.
+
+## 9M1.
+
+Given: Rugged data.
+
+Want: Model with prior `dunif(0,10)` and `dexp(1)` for `sigma`. Difference to the previous model.
+
+Sol.:
+
+```{r}
+data(rugged)
+d <- rugged
+d <- d[d$cont_africa==1, c("isocode", "country", "rugged", "rgdppc_2000")]
+d$log_gdp <- log(d$rgdppc_2000)
+d <- d[ complete.cases(d$rgdppc_2000) ,]
+d$L <- d$log_gdp / mean(d$log_gdp)
+d$rugged_std <- d$rugged / max(d$rugged)
+d$R <- d$rugged_std - mean(d$rugged_std)
+summary(data.frame(d$L, d$R))
+```
+
+
+```{r}
+m9M1q <- quap(
+    alist(
+        L ~ dnorm( mu , sigma ) ,
+        mu <- a + b*R ,
+        a ~ dnorm( 1 , 0.1 ) ,
+        b ~ dnorm( 0 , 0.3 ) ,
+        sigma ~ dexp( 1 )
+    ) , data=d )
+precis( m9M1q , depth=2 )
+```
+
+```{r, results = "hide", cache = TRUE}
+m9M1u <- ulam(
+    alist(
+        L ~ dnorm( mu , sigma ) ,
+        mu <- a + b*R ,
+        a ~ dunif( 0 , 10 ) ,
+        b ~ dunif( 0 , 10 ) ,
+        sigma ~ dexp( 1 )
+    ) , data=d, chains=4 , cores=4 )
+```
+```{r}
+traceplot(m9M1u)
+```
+
+```{r}
+precis(m9M1u)
+```
+
+
+```{r}
+plot_rugged_posterior <- function(model,d){
+  plot( d$R , d$L , pch=16 , col=rangi2 ,
+    xlab="R" , ylab="L" ,
+    xlim=c(min(d$R),max(d$R)) )
+  R.seq <- seq( from=min(d$R) , to=max(d$R) , length.out=30 )
+  mu <- link( model , data=data.frame( R=R.seq ) )
+  mu_mean <- apply( mu , 2 , mean )
+  mu_ci <- apply( mu , 2 , PI , prob=0.97 )
+  lines( R.seq , mu_mean , lwd=2 )
+  shade( mu_ci , R.seq , col=col.alpha(rangi2,0.3) )
+  mtext("African nations")
+}
+
+par(mfrow=c(1,2)) 
+
+plot_rugged_posterior(m9M1q,d)
+plot_rugged_posterior(m9M1u,d)
+```
+
+- No significat difference.
+
+## 9M2.
+
+Given: Rugged data.
+
+Want: Compare the dcauchy and dexp priors for progressively smaller values of the scaling parameter. As these priors become stronger, how does each influence the posterior distribution?
+
+Sol.:
+
+```{r}
+x.seq <- seq( from=-10 , to=10 , length.out=30)
+plot(x.seq,dcauchy(x.seq, 0,0.01),type="l", lty=2, ylim=c(0,0.5), xlab="x", ylab="p(x)")
+lines(x.seq,dcauchy(x.seq, 0,0.1))
+lines(x.seq,dcauchy(x.seq, 0,1))
+```
+
+
+```{r, results = "hide", cache = TRUE}
+set.seed(1)
+m9M2a <- ulam(
+    alist(
+        L ~ dnorm( mu , sigma ) ,
+        mu <- a + b*R ,
+        a ~ dcauchy( 0 , 1 ) ,
+        b ~ dcauchy( 0 , 1 ) ,
+        sigma ~ dexp( 1 )
+    ) , data=d, chains=4 , cores=4)
+
+m9M2b <- ulam(
+    alist(
+        L ~ dnorm( mu , sigma ) ,
+        mu <- a + b*R ,
+        a ~ dcauchy( 0 , 1 ) ,
+        b ~ dcauchy( 0 , 0.1 ) ,
+        sigma ~ dexp( 1 )
+    ) , data=d, chains=4 , cores=4)
+
+m9M2c <- ulam(
+    alist(
+        L ~ dnorm( mu , sigma ) ,
+        mu <- a + b*R ,
+        a ~ dcauchy( 0 , 1 ) ,
+        b ~ dcauchy( 0 , 0.01 ) ,
+        sigma ~ dexp( 1 )
+    ) , data=d, chains=4 , cores=4 )
+```
+
+```{r, results = "hide", cache = TRUE}
+plot_rugged_prior <- function(model, d){
+  prior <- extract.prior( model )
+  
+  plot( NULL , xlim=c(min(d$R),max(d$R)), ylim=c(min(d$L),max(d$L)) ,xlab="R", 
+        ylab="L" )
+  abline( h=min(d$R) , lty=2 )
+  abline( h=max(d$R) , lty=2 )
+  
+  R.seq <- seq( from=min(d$R) , to=max(d$R) , length.out=30 )
+  mu <- link( model , post=prior , data=data.frame(R=R.seq) )
+  for ( i in 1:50 ) lines( R.seq , mu[i,] , col=col.alpha("black",0.3) )
+}
+par(mfrow=c(1,3)) 
+plot_rugged_prior(m9M2a, d)
+plot_rugged_prior(m9M2b, d)
+plot_rugged_prior(m9M2c, d)
+```
+
+```{r, results = "hide", cache = TRUE}
+par(mfrow=c(1,3)) 
+
+plot_rugged_posterior(m9M2a,d)
+plot_rugged_posterior(m9M2b,d)
+plot_rugged_posterior(m9M2c,d)
+```
+
+```{r}
+precis(m9M2a)
+precis(m9M2b)
+precis(m9M2c)
+```
+
+- The stronger the prior, the less slope as expected.
+
+## 9M3.
+Given: Rugged data.
+
+Want: Compare the n_eff values. How much warmup is enough?
+
+Sol.:
+
+```{r, results = "hide", cache = TRUE}
+l9M3 <- alist(
+        L ~ dnorm( mu , sigma ) ,
+        mu <- a + b*R ,
+        a ~ dcauchy( 0 , 1 ) ,
+        b ~ dcauchy( 0 , 1 ) ,
+        sigma ~ dexp( 1 ))
+
+m9M3a <- ulam(l9M3, data=d, chains=4 , cores=4, warmup=1)
+m9M3b <- ulam(l9M3, data=d, chains=4 , cores=4, warmup=10)
+m9M3c <- ulam(l9M3, data=d, chains=4 , cores=4, warmup=100)
+```
+
+```{r}
+precis(m9M3a)
+precis(m9M3b)
+precis(m9M3c)
+```
+
+```{r}
+traceplot(m9M3a)
+traceplot(m9M3b)
+traceplot(m9M3c)
+```
+
+
+- According to the traceplots, and the R-hat values, 100 warmup iterations are enough.
+
+## 9H1.
+
+Given:
+
+```{r, results = "hide", cache = TRUE}
+mp <- ulam(
+  alist(
+    a ~ dnorm(0,1),
+    b ~ cauchy(0,1)
+  ),
+  data=list(y=1),
+  start=list(a=0,b=0),
+  iter=1e4, warmup=100)
+```
+
+Want: Run the model below and then inspect the posterior distribution and explain what it is accomplishing. Compare the samples for the parameters a and b . Can you explain the different trace plots, using what you know about the Cauchy distribution?
+
+Sol.:
+
+- It samples 10000 values from a standard normal distribution and 10000 values from a Cauchy distribution with location 0 and scale 1.
+
+```{r}
+traceplot(mp)
+```
+
+```{r}
+precis(mp)
+```
+
+- The trace plot shows that ´a´ is sample quite well.
+- The trace plot shows that mostly ´b´ at 0 is sampled with a few extreme values ranging from about -600 to +200.
+- The R-hat value is 1 for both parameters.
+
+## 9H2.
+
+Given: Divorce rates.
+
+Want: Compare models m5.1, m5.2, m5.3 with ´ulam´.
+
+Sol.:
+
+```{r}
+library(rethinking)
+data(WaffleDivorce)
+d <- WaffleDivorce
+
+# standardize variables
+d$D <- standardize( d$Divorce )
+d$M <- standardize( d$Marriage )
+d$A <- standardize( d$MedianAgeMarriage )
+d <- d[, c("D","A","M")]
+```
+
+```{r}
+l5.1 <- alist(
+        D ~ dnorm( mu , sigma ) ,
+        mu <- a + bA * A ,
+        a ~ dnorm( 0 , 0.2 ) ,
+        bA ~ dnorm( 0 , 0.5 ) ,
+        sigma ~ dexp( 1 )
+    ) 
+
+l5.2 <- alist(
+        D ~ dnorm( mu , sigma ) ,
+        mu <- a + bM * M ,
+        a ~ dnorm( 0 , 0.2 ) ,
+        bM ~ dnorm( 0 , 0.5 ) ,
+        sigma ~ dexp( 1 )
+    )
+
+l5.3 <- alist(
+        D ~ dnorm( mu , sigma ) ,
+        mu <- a + bM*M + bA*A ,
+        a ~ dnorm( 0 , 0.2 ) ,
+        bM ~ dnorm( 0 , 0.5 ) ,
+        bA ~ dnorm( 0 , 0.5 ) ,
+        sigma ~ dexp( 1 )
+    )
+```
+
+```{r}
+m5.1q <- quap(l5.1, data=d)
+m5.2q <- quap(l5.2, data=d)
+m5.3q <- quap(l5.3, data=d)
+```
+
+```{r, results = "hide", cache = TRUE}
+m5.1u <- ulam(l5.1, data=d, chains=4 , cores=4, log_lik = TRUE)
+m5.2u <- ulam(l5.2, data=d, chains=4 , cores=4, log_lik = TRUE)
+m5.3u <- ulam(l5.3, data=d, chains=4 , cores=4, log_lik = TRUE)
+```
+
+```{r}
+compare(m5.1q, m5.1u)
+compare(m5.2q, m5.2u)
+compare(m5.3q, m5.3u)
+```
+
+- In terms of WAIC values the MCMC models perform better than their quadratic approximation counterparts.
+- In each case the difference is not reliable because dSE > dWAIC.
+
+
+## 9H3.
+
+Given:  Leg length example in Chapter 5.
+
+Want: Fit with MCMC with `constraints=list(br="lower=0")` and without. Compare beta parameters.
+
+Sol.:
+
+```{r}
+N <- 100
+height <- rnorm(N, 10, 2)
+leg_prop <- runif(N, 0.4, 0.5)
+leg_left <- leg_prop * height + rnorm( N, 0 , 0.02)
+leg_right <- leg_prop * height * rnorm(N, 0, 0.02)
+
+d <- data.frame( height, leg_left, leg_right)
+```
+
+```{r}
+l5.8 <- alist(
+  height ~ dnorm(mu, sigma),
+  mu <- a + bl*leg_left + br*leg_right,
+  a ~ dnorm( 10, 100),
+  bl ~ dnorm( 2, 10),
+  br ~ dnorm( 2, 10),
+  sigma ~ dexp(1)
+)
+start_values <- list(a=10, bl=0, br=0.1, sigma=1)
+```
+
+
+
+```{r, results = "hide", cache = TRUE}
+set.seed(1)
+m5.8s <- ulam(l5.8, data=d, chains = 4, cores = 4, 
+              start=start_values,
+              log_lik = TRUE)
+
+m5.8s2 <- ulam(l5.8, data=d, chains = 4, cores = 4, 
+              constraints = list(br="lower=0"),
+              start=start_values,
+              log_lik = TRUE)
+```
+
+```{r}
+precis(m5.8s)
+precis(m5.8s2)
+```
+
+- The slope of the right leg (´br´) is heigher than in the model with the constraint. This was expected because negative values were ruled out.
+
+## 9H4.
+
+Given: 9H3.
+
+Want: Use WAIC or PSIS to compare effective number of parameters.
+
+Sol.:
+
+```{r}
+compare(m5.8s, m5.8s2)
+```
+
+- According the precis output of 9H3, m5.8s has atleast about 300 more effictive parameters than m5.8s2. This could be the case because a more contraining prior.
+- The difference in WAIC values is very small.
+
+## 9H5.
+
+Given: Metropolis algorithm.
+
+Want: Modify such that the island populations have a different distribution than the island labels.
+
+Sol.:
+
+```{r}
+populations <- c(10,2,3,4,50,6,7,8,90,10)
+num_weeks <- 1e5
+positions <- rep(0,num_weeks)
+current <- 10
+for ( i in 1:num_weeks ) {
+  ## record current position
+    positions[i] <- current
+  ## flip coin to generate proposal
+    proposal <- current + sample( c(-1,1) , size=1 )
+  ## now make sure he loops around the archipelago
+    if ( proposal < 1 ) proposal <- 10
+    if ( proposal > 10 ) proposal <- 1
+  ## move?
+    prob_move <- populations[proposal]/populations[current]
+    current <- ifelse( runif(1) < prob_move , proposal , current )
+}
+
+#par(mfrow=c(1,2)) 
+#plot( 1:100 , positions[1:100] )
+
+plot( table( positions ) )
+#dens(positions)
+```
+
+
+## 9H6.
+
+Given: Globe example: $k=8$, $n=15$.
+
+Want: $P(p\mid k,n)$ with Metropolis algorithm.
+
+Sol.:
+
+```{r}
+# Original grid solution from chapter 3 for comparison.
+get_grid_samples <- function(k,n){
+  num_grid_points <- 1000
+  p_grid <- seq( from=0 , to=1 , length.out=num_grid_points)
+  prior <- rep(1,num_grid_points)
+  likelihood <- dbinom( k , size=n , prob=p_grid )
+  posterior <- likelihood * prior
+  posterior <- posterior / sum(posterior)
+  samples <- sample( p_grid , size=1e4 , replace=TRUE , prob=posterior )
+  return(samples)
+}
+set.seed(3)
+samples <- get_grid_samples(8, 15)
+
+dens( samples )
+```
+
+```{r}
+HPDI( samples , prob=0.90 )
+```
+
+```{r}
+set.seed(3)
+
+n <- 15
+k <- 8
+num_grid_points <- 1000
+
+p_grid <- seq( from=0 , to=1 , length.out=num_grid_points)
+likelihood <- dbinom( k , size=n , prob=p_grid )
+
+num_samples <- 1e6
+samples <- rep(0,num_samples)
+current <- num_grid_points
+for ( i in 1:num_samples ) {
+    samples[i] <- current
+    proposal <- current + sample( c(-1,1) , size=1 )
+    if ( proposal < 1 ) proposal <- num_grid_points
+    if ( proposal > num_grid_points ) proposal <- 1
+    prob_move <- likelihood[proposal]/likelihood[current]
+    current <- ifelse( runif(1) < prob_move , proposal , current )
+}
+
+dens( samples )
+```
+
+
+```{r}
+HPDI( samples/num_grid_points , prob=0.90 )
+```
