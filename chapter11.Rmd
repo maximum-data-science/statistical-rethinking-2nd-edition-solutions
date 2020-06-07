@@ -1,0 +1,416 @@
+---
+title: "Chapter 11"
+author: "jim108@gmx.net"
+date: "6/6/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(rethinking)
+```
+
+
+## 11E1.
+
+Given: Probability $p=0.35$.
+
+Want: Log-odds.
+
+Sol.: 
+
+```{r}
+p = 0.35
+logit(p)
+```
+
+
+## 11E1.
+
+Given: Log-odds $logodds=3.2$.
+
+Want: Probability.
+
+Sol.: 
+
+```{r}
+logodds=3.2
+inv_logit(logodds)
+```
+
+## 11E3.
+
+Given: Logistic regression with $a=1.7$.
+
+Want: Proportional change of the ods.
+
+Sol.:
+
+```{r}
+a<-1.7
+exp(a)
+```
+
+## 11E4.
+
+Want: Why do Poisson regressions sometimes require the use of an offset? Provide an example.
+
+Sol.:
+
+- Different observations can have different time frames or different distances.
+- For example 1.5 manuscrits produced per day at monastery 1 and 3.5 per week at monatery 2.
+
+## 11M1.
+
+Want: Why does likelihood of aggregated binomial data differ from disaggregated binomial data?
+
+Sol.: The likelihood of disaggregated binomial data omits the multiplicity.
+
+## 11M2.
+
+Given: Poisson regression with $a=1.7$.
+
+Want: Change of the outcome.
+
+Sol.:
+
+```{r}
+a <- 1.7
+exp(a)
+```
+
+## 11M3.
+
+Want: Why is the logit link is appropriate for a binomial generalized linear model?
+
+Sol.: Binomial outcomes are between 0 and 1. The logit link restricts the outcome of a linear model in a sensible way (outcome 0 => p=0.5 etc).
+
+## 11M4.
+
+Want: Why is the log link is appropriate for a Poisson generalized linear model?
+
+Sol.: Poisson outcomes are greater than 0. The log link restricts the outcome of the linear model in a sensible way.
+
+## 11M5.
+
+Want: What would it imply to use a logit link for the mean of a Poisson generalized linear model? Example.
+
+Sol.: 
+
+- The rate will be restricted between 0 and 1.
+- E.g. restricted growth of plant, which cannot shrink and grow beyound 100 of its original size.
+
+## 11M6.
+
+Want: Constraints for which the binomial and Poisson distributions have maximum entropy. Are the constraints different at all for binomial and Poisson? Why or why not?
+
+Sol.:
+
+- Binomial: Aggregated 0/1 trials with known number of trails.
+- Poisson:  Experiments with expected value = variance 
+- The constraints are only equal for an infinitly large number of possible outcomes.
+
+##11H1
+
+Given: Chimpanzee data.
+
+Want: Quadratic approximate posterior distribution that includes a unique intercept for each actor. Compare with MCMC.
+
+Sol.:
+
+```{r}
+data(chimpanzees)
+d <- chimpanzees
+d$treatment <- 1 + d$prosoc_left + 2*d$condition
+
+dat_list <- list(
+    pulled_left = d$pulled_left,
+    actor = d$actor,
+    treatment = as.integer(d$treatment) )
+
+l11.4 <- alist(
+        pulled_left ~ dbinom( 1 , p ) ,
+        logit(p) <- a[actor] + b[treatment] ,
+        a[actor] ~ dnorm( 0 , 1.5 ),
+        b[treatment] ~ dnorm( 0 , 0.5 )
+    )
+```
+
+
+```{r, results = "hide", cache = TRUE}
+set.seed(1)
+m11.4u <- ulam(l11.4 , data=dat_list , chains=4 , log_lik=TRUE )
+
+precis( m11.4u , depth=2 )
+```
+
+```{r}
+m11.4q <- quap(l11.4 , data=dat_list)
+precis( m11.4q , depth=2 )
+```
+
+- There are minor differences in the mean coefficient values, which are all smaller than one standard deviation. 
+- The most significant difference is for actor 2. The quadaratic approximation approximates to a normal distribution, which is by definition symmetric. It does not fit to actor 2, who pulls only the right lever.
+
+## 11H2.
+
+Given: Chimpanzee data.
+
+Want: Compare WAIC values of model with intercept for each actor to simpler model.
+
+Sol.:
+
+```{r}
+l11.3 <- alist(
+        pulled_left ~ dbinom( 1 , p ) ,
+        logit(p) <- a + b[treatment] ,
+        a ~ dnorm( 0 , 1.5 ),
+        b[treatment] ~ dnorm( 0 , 0.5 )
+    )
+```
+
+```{r}
+m11.3q <- quap(l11.3 , data=dat_list)
+compare( m11.3q, m11.4q)
+```
+
+- The model with actor has a much reliably (dSE<dWAIC) lower WAIC value.
+
+## 11H3.
+
+Given: Eagles data.
+
+Want: (a) Fit with ´ulam´ and ´quap´.
+
+```{r}
+library(MASS)
+data(eagles)
+d <- eagles
+d
+```
+
+```{r}
+dat_list <- list(
+    y = d$y,
+    n = d$n,
+    P = as.integer(d$P),
+    A = as.integer(d$A),
+    V = as.integer(d$V))
+dat_list
+```
+
+
+```{r}
+l11H3 <- alist(
+        y ~ dbinom( n , p ),
+        logit(p) <- a + bP*P + bV*V + bA*A,
+        a ~ dnorm( 0 , 1.5 ),
+        c(bP,bV,bA) ~ dnorm( 0 , 1.5 )
+)
+m11H3q <- quap(l11H3, data=dat_list)
+
+precis( m11H3q , depth=2 )
+```
+
+```{r, results = "hide", cache = TRUE}
+set.seed(1)
+m11H3u <- ulam(l11H3, data=dat_list, chains=4, log_lik = TRUE )
+
+precis( m11H3u , depth=2 )
+```
+
+```{r}
+compare(m11H3q, m11H3u)
+```
+
+- There are minor differences in the mean coefficient values, which are all smaller than one standard deviation. 
+- The mcmc approximation has a reliably (dSE<dWAIC) lower WAIC value.
+
+Want: (b) Interpret the estimates. Plot posterior with (1) the predicted probability of success and its 89% interval for each row (i) in the data, as well as (2) the predicted success count and its 89% interval. What different information does each type of posterior prediction provide?
+
+Sol.:
+
+```{r}
+set.seed(1)
+p <- link(m11H3u)
+p.mean <- colMeans(p)
+p.PI <- apply(p, 2, PI)
+
+d$p <- d$y / d$n
+plot(d$p, col=rangi2, ylab="probability of success", xlab="case", xaxt="n",  ylim = c(0, 1), pch=16)
+axis(1, at=1:8, labels=c( "LAL","LAS","LIL","LIS","SAL","SAS","SIL","SIS" ))
+points( 1:8 , p.mean )
+for(i in 1:8){ lines( c(i, i), p.PI[,i] ) }
+```
+
+```{r}
+set.seed(1)
+y <- sim(m11H3u)
+y.mean <- colMeans(y)
+y.PI <- apply(y, 2, PI)
+
+plot(d$y, col=rangi2, ylab="predicted success count", xlab="case", xaxt="n", xlim=c(0.75,8.25) , ylim = c(0, 30), pch=16)
+axis(1, at=1:8, labels=c( "LAL","LAS","LIL","LIS","SAL","SAS","SIL","SIS" ))
+points( 1:8 , y.mean )
+for(i in 1:8){ lines(c(i, i), y.PI[,i]) }
+```
+
+- It is just on different scales.
+
+Want: (c) Now try to improve the model. Consider an interaction between the pirate’s size and age (immature or adult). Compare this model to the previous one, using WAIC. Interpret.
+
+Sol.:
+
+```{r, results = "hide", cache = TRUE}
+set.seed(1)
+l11H3c <- alist(
+        y ~ dbinom( n , p ),
+        logit(p) <- a + bP*P + bV*V + bA*A + bPA*P*A,
+        a ~ dnorm( 0 , 1.5 ),
+        c(bP,bV,bA, bPA) ~ dnorm( 0 , 1.5 )
+)
+m11H3c <- ulam(l11H3c, data=dat_list, chains=4, log_lik = TRUE )
+
+precis( m11H3c , depth=2 )
+```
+
+```{r}
+compare(m11H3u, m11H3c)
+```
+
+- According to the WAIC the model has inproved.
+
+## 11H4.
+
+Given: Salamander data.
+
+Want: Model the relationship between density and percent cover, using a log-link. Compare ´quap´ vs ´ulam´ approximation. Plot 89 % interval.
+
+Sol.:
+
+```{r}
+data("salamanders")
+d <- salamanders
+head(d)
+```
+
+```{r}
+dat_list <- list(
+    S = d$SALAMAN,
+    C = standardize(d$PCTCOVER),
+    A = standardize(d$FORESTAGE)
+)
+head(dat_list)
+```
+
+```{r}
+l11H4 <-alist(
+        S ~ dpois( lambda ),
+        log(lambda) <- a + bC*C,
+        a ~ dnorm( 0 , 0.5 ),
+        bC ~ dnorm( 0 , 0.5 )
+        )
+m11H4q <- quap(l11H4, data=dat_list)
+
+precis( m11H4q , depth=2 )
+```
+```{r, results = "hide", cache = TRUE}
+set.seed(1)
+m11H4u <- ulam(l11H4, data=dat_list, chains=4, log_lik = TRUE)
+
+precis( m11H4u , depth=2 )
+```
+
+```{r}
+set.seed(1)
+compare(m11H4q, m11H4u)
+```
+
+```{r}
+set.seed(1)
+
+plot( dat_list$C , dat_list$S , xlab="C" , ylab="S" ,
+    col=rangi2 , lwd=2 , 
+    ylim=c(min(dat_list$S),max(dat_list$S)),
+    xlim=c(min(dat_list$C),max(dat_list$C)) )
+
+ns <- 100
+C.seq <- seq( from=min(dat_list$C) , to=max(dat_list$C) , length.out=ns )
+
+lambda <- link( m11H4q , data=data.frame( C=C.seq) )
+lmu <- apply( lambda , 2 , mean )
+lci <- apply( lambda , 2 , PI )
+lines( C.seq , lmu , lty=2 , lwd=1.5 )
+shade( lci , C.seq , xpd=TRUE )
+```
+
+Want: Include ´FORESTAGE´ into the model. Compare. Interpret.
+
+Sol.:
+
+```{r}
+l11H4c <-alist(
+        S ~ dpois( lambda ),
+        log(lambda) <- a + bA*A + bAC*A*C + bC*C,
+        a ~ dnorm( 0 , 0.5 ),
+        c(bA,bAC,bC) ~ dnorm( 0 , 0.5 )
+        )
+m11H4cq <- quap(l11H4c, data=dat_list)
+
+precis( m11H4cq , depth=2 )
+```
+
+```{r, results = "hide", cache = TRUE}
+set.seed(1)
+m11H4cu <- ulam(l11H4c, data=dat_list, chains=4, log_lik = TRUE)
+```
+
+```{r}
+precis( m11H4cu , depth=2 )
+```
+
+
+```{r}
+set.seed(1)
+compare(m11H4cq, m11H4cu)
+```
+
+```{r}
+set.seed(1)
+
+par(mfrow=c(1,2))
+
+# vary C
+plot( dat_list$C , dat_list$S , xlab="C" , ylab="S" ,
+    col=rangi2 , lwd=2 , 
+    ylim=c(min(dat_list$S),max(dat_list$S)),
+    xlim=c(min(dat_list$C),max(dat_list$C)) )
+
+ns <- 100
+C.seq <- seq( from=min(dat_list$C) , to=max(dat_list$C) , length.out=ns )
+
+lambda <- link( m11H4cq , data=data.frame( C=C.seq, A=0) )
+lmu <- apply( lambda , 2 , mean )
+lci <- apply( lambda , 2 , PI )
+lines( C.seq , lmu , lty=2 , lwd=1.5 )
+shade( lci , C.seq , xpd=TRUE )
+
+# vary A
+plot( dat_list$A , dat_list$S , xlab="A" , ylab="S" ,
+    col=rangi2 , lwd=2 , 
+    ylim=c(min(dat_list$S),max(dat_list$S)),
+    xlim=c(min(dat_list$A),max(dat_list$A)) )
+
+A.seq <- seq( from=min(dat_list$A) , to=max(dat_list$A) , length.out=ns )
+
+lambda <- link( m11H4cq , data=data.frame( A=A.seq, C=0) )
+lmu <- apply( lambda , 2 , mean )
+lci <- apply( lambda , 2 , PI )
+lines( A.seq , lmu , lty=2 , lwd=1.5 )
+shade( lci , A.seq , xpd=TRUE )
+
+```
+
+- According to the plots, most datapoints are not in the predicted 89 % interval.
+- According to the precis output, the contribution of forestage to the prediction is very small.
+- According to the model the number of salamander increases with ground cover. The age of the trees does not matter.
