@@ -186,7 +186,9 @@ Want: (a) Fit with ´ulam´ and ´quap´.
 library(MASS)
 data(eagles)
 d <- eagles
-d
+levels(d$P)
+levels(d$A)
+levels(d$V)
 ```
 
 ```{r}
@@ -255,7 +257,7 @@ points( 1:8 , y.mean )
 for(i in 1:8){ lines(c(i, i), y.PI[,i]) }
 ```
 
-- It is just on different scales.
+- According to the plots LAS, LIS, SAS and SIS differ. This could be the case because values at the upper end of the spectrum get squashed by the logit resp. the logistic function. This does not explain the SIS case.
 
 Want: (c) Now try to improve the model. Consider an interaction between the pirate’s size and age (immature or adult). Compare this model to the previous one, using WAIC. Interpret.
 
@@ -270,7 +272,8 @@ l11H3c <- alist(
         c(bP,bV,bA, bPA) ~ dnorm( 0 , 1.5 )
 )
 m11H3c <- ulam(l11H3c, data=dat_list, chains=4, log_lik = TRUE )
-
+```
+```{r}
 precis( m11H3c , depth=2 )
 ```
 
@@ -278,7 +281,22 @@ precis( m11H3c , depth=2 )
 compare(m11H3u, m11H3c)
 ```
 
+```{r}
+set.seed(1)
+y <- sim(m11H3c)
+y.mean <- colMeans(y)
+y.PI <- apply(y, 2, PI)
+
+plot(d$y, col=rangi2, ylab="predicted success count", xlab="case", xaxt="n", xlim=c(0.75,8.25) , ylim = c(0, 30), pch=16)
+axis(1, at=1:8, labels=c( "LAL","LAS","LIL","LIS","SAL","SAS","SIL","SIS" ))
+points( 1:8 , y.mean )
+for(i in 1:8){ lines(c(i, i), y.PI[,i]) }
+```
+
 - According to the WAIC the model has inproved.
+- The highest successful counts are achieved by a large, adult pirate with a small victim, as expected.
+- The lowest successful counts are achieved by a large victims or small and infant pirates, as expected.
+- According to the precis output, the interaction effect of pirate size and adult/infant is important.
 
 ## 11H4.
 
