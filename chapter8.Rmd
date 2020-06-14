@@ -286,7 +286,7 @@ text(dsyc$log_gdp_std~dsyc$rugged_std, labels=country, data=dsyc, cex=0.9, font=
 
 - The WAIC penalty is now reduced from about 0.5 to 0.3.
 - The Parate k is now reduced from about 0.5 to 0.2.
-- The 97% interval for the posterier values of the robust model does not look significantly different than the non-robust model.
+- The 97% interval for the posterier mean of the robust model does not look significantly different than the non-robust model.
 
 ## 8H4.
 Given: Nettle data on language diversity in 74 nations.
