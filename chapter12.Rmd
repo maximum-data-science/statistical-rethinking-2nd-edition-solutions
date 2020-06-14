@@ -1,0 +1,614 @@
+---
+title: "Chapter 12"
+author: "jim108@gmx.net"
+date: "6/9/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(rethinking)
+```
+
+
+## 12E1.
+
+Want: Difference between ordered categorical variable and unordered.
+
+Sol.: 
+
+- Values of ordered categorical variable can be arranged in a unique order. E. g. what mood are you in right now? Choices: good (3), neutral (2), bad (1).
+- The order of the values of an unordered categorical variable is arbitrary. E. g. what color do you like? Choices: blue, red, green = red, blue, green.
+
+## 12E2.
+
+Want: What kind of link function does an ordered logistic regression employ? How does it differ from an ordinary logit link?
+
+Sol.:
+
+$log(\frac{Pr(y_i \le k)}{1-Pr(y_i\le k)})$.
+
+It uses the commulative density function instead of the probablility density function.
+
+## 12E3.
+
+Given: Zero-inflated data.
+
+Want: Kind of initial error when ignorring zero-inflation.
+
+Sol.:
+
+- There will be an higher variance in the model.
+- Preditions and oberservations do not fit as good as it would be the case by using a zero-inflation model.
+
+## 12E4.
+
+Want: 
+
+1. Example of over-dispersed counts. 
+1. Example of under-dispersed counts.
+
+Sol.:
+
+1. Modelling number of wolfs without considering amount of pray.
+
+## 12M1.
+
+Given: Employee ratings (rating(1-4):#employees): 1:12, 2:36, 3:7, 4:41.
+
+Want: Log comulative odds of each rating.
+
+Sol.:
+
+```{r}
+r <- c(12,36,7,41)
+n <- length(r)
+p <- r/sum(r)
+cp <- cumsum(p)
+logit(cp)
+```
+
+## 12M2.
+
+Given: 12M1.
+
+Want: Make a version of Figure 12.5 for the employee ratings data given just above.
+
+Sol.:
+
+```{r}
+plot( 1:n , cp , type="b" , xlab="grad" ,
+ylab="cumulative proportion" , ylim=c(0,1), xaxt="n" )
+axis(1, at = 1:n)
+segments(1:n,0,1:n,cp)
+for(i in 1:n){
+  segments(i+0.05,c(0,cp)[i],i+0.05,cp[i])
+  }
+```
+
+## 12M3.
+
+Given: Zero-inflated Poisson (ZIPoisson).
+
+Want: Zero-inflated binomial.
+
+Sol.
+
+$Pr(k=0\mid p, n) = Pr(fail\mid p) + Pr(success\mid p) \times Pr(k=0\mid n)$
+$= p + (1-p)\binom{n}{0}p^0(1-p)^{n-0} = p + (1-p)^{n+1}$.
+
+$Pr(k\mid k>0, p, n) = Pr(success\mid p) \times Pr(k\mid n)$
+$= \binom{n}{k}p^k(1-p)^{n-k+1}$.
+
+## 12H1.
+
+Given: Hurricanes data.
+
+Want: Poisson model with ´deaths´ and ´femininity´. Poisson model with ´deaths´. Compare. How strong is the association between femininity of name and deaths? Which storms does the model fit (retrodict) well? Which storms does it fit poorly?
+
+Sol.:
+
+```{r}
+data(Hurricanes)
+d <- Hurricanes
+sprintf("Number of missing values: %d", sum(complete.cases(d) == FALSE))
+summary(d)
+```
+
+```{r}
+d$D <- d$deaths
+d$F <- standardize(d$femininity)
+plot(d$D~d$F, xlab="F", ylab="D")
+```
+
+```{r, results = "hide", cache = TRUE}
+set.seed(1)
+# model with intercept and femininity.
+m12H1a <- ulam(
+    alist(
+        D ~ dpois(lambda),
+        log(lambda) <- a + bF*F,
+        a ~ dnorm(0,5),
+        bF ~ dnorm(0,1)
+    ), data=d , chains=4 , cores=4, log_lik = TRUE )
+```
+
+```{r, results = "hide", cache = TRUE}
+# Sermon on priors.
+set.seed(1)
+m12H1a.prior <- extract.prior( m12H1a)
+precis(m12H1a.prior)
+```
+
+```{r}
+plot( NULL , xlim=c(min(d$F),max(d$F)) , ylim=c(min(d$D),max(d$D)) ,xlab="F" , ylab="D" )
+abline( h=min(d$deaths) , lty=2 )
+abline( h=max(d$deaths) , lty=2 )
+
+F_seq <- seq( from=min(d$F) , to=max(d$F) , length.out=30 )
+mu <- link( m12H1a, post=m12H1a.prior , data=data.frame(F=F_seq) )
+for ( i in 1:50 ) lines( F_seq , mu[i,] , col=col.alpha("black",0.3) )
+```
+
+```{r}
+precis(m12H1a, depth = 2)
+```
+
+```{r, results = "hide", cache = TRUE}
+set.seed(1)
+# offset only model
+m12H1b <- ulam(
+    alist(
+        D ~ dpois(lambda),
+        log(lambda) <- a,
+        a ~ dnorm(0,5)
+    ), data=d , chains=4 , cores=4, log_lik = TRUE )
+```
+
+```{r}
+precis(m12H1a, depth = 2)
+precis(m12H1b, depth = 2)
+```
+
+```{r}
+exp(coef(m12H1a))
+```
+
+```{r}
+exp(coef(m12H1b))
+```
+
+```{r}
+set.seed(1)
+plot(d$D~d$F, xlab="F", ylab="D")
+
+mu <- link( m12H1a, data=data.frame(F=F_seq ) )
+mu_mean <- apply(mu,2,mean)
+lines( F_seq , mu_mean , lwd=2 )
+
+sim.D <- sim( m12H1a, data=data.frame(F=F_seq ) )
+sim.PI <- apply( sim.D , 2 , PI , prob=0.89 )
+shade( sim.PI , F_seq , col=col.alpha(rangi2,0.3) )
+```
+
+```{r}
+compare(m12H1a, m12H1b)
+```
+
+```{r}
+set.seed(1)
+d$m12H1a_penalty <- WAIC(m12H1a, pointwise = TRUE)$penalty
+d$m12H1a_k <- PSIS(m12H1a, pointwise = TRUE)$k
+plot( d$m12H1a_k , d$m12H1a_penalty , xlab="PSIS Pareto k" , xlim=c(min(d$m12H1a_k),max(d$m12H1a_k)),
+    ylab="WAIC penalty" , col=rangi2 , lwd=2 )
+text(d$m12H1a_penalty~d$m12H1a_k, labels=d$name, data=d, cex=0.9, font=2, pos=2)
+mtext("m12H1a")
+```
+
+```{r}
+print("Poorly fitted storms:")
+d[d$m12H1a_k>0.5,]
+```
+
+- There is no reliable difference between the model with and without ´femininity´.
+- The model accuracy is questionable, because 5 stroms have pareto k values greater 0.5.
+
+## 12H2.
+
+Given: 12H1.
+
+Want: Fit with gamma-Poisson model. Show that the over-dispersed model no longer shows as precise a positive association between femininity and deaths, with an 89% interval that overlaps zero. Can you explain why the association diminished in strength?
+
+Sol.:
+```{r}
+head(d)
+```
+
+```{r, results = "hide", cache = TRUE}
+set.seed(1)
+m12H2 <- ulam(
+    alist(
+        D ~ dgampois( lambda , phi ),
+        log(lambda) <- a + bF*F,
+        a ~ dnorm(0,5),
+        bF ~ dnorm(0,1),
+        phi ~ dexp(1)
+    ), data=d , chains=4 ,cores=4 )
+```
+
+
+```{r, results = "hide", cache = TRUE}
+set.seed(1)
+# Sermon on priors.
+m12H2.prior <- extract.prior( m12H2)
+
+precis(m12H2.prior)
+```
+
+
+```{r}
+plot( NULL , xlim=c(min(d$F),max(d$F)) , ylim=c(min(d$D),max(d$D)) ,xlab="F" , ylab="D" )
+abline( h=min(d$D) , lty=2 )
+abline( h=max(d$D) , lty=2 )
+
+F_seq <- seq( from=min(d$F) , to=max(d$F), length.out=30 )
+mu <- link( m12H2, post=m12H2.prior , data=data.frame(F=F_seq) )
+for ( i in 1:50 ) lines( F_seq , mu[i,] , col=col.alpha("black",0.3) )
+```
+
+```{r}
+precis(m12H1a)
+precis(m12H2)
+```
+
+
+```{r}
+set.seed(1)
+plot(d$D~d$F, xlab="", ylab="D", xlim=c(min(F),max(F)))
+
+mu <- link( m12H2, data=data.frame(F=F_seq ) )
+mu_mean <- apply(mu,2,mean)
+lines( F_seq , mu_mean , lwd=2 )
+
+sim.D <- sim( m12H2, data=data.frame(F=F_seq ) )
+sim.PI <- apply( sim.D , 2 , PI , prob=0.89 )
+shade( sim.PI , F_seq , col=col.alpha(rangi2,0.3) )
+```
+
+- Despite of trying different priors, the gamma-Poisson model neither diminishes the influence of femininity nor the 89 % interval overlaps 0.
+
+
+## 12H3.
+
+Given: Hurricane data.
+
+Want: Model interaction effect with ´damage_norm´ (normalized estimate of damage in dollars) or ´min_pressure´ (minimum pressure, a measure of storm strength; low is stronger).
+
+Sol.:
+
+```{r}
+summary(d)
+```
+
+```{r}
+d$P <- standardize(d$min_pressure)
+d$C <- standardize(d$damage_norm)
+#summary(d)
+pairs(data.frame(d$deaths,d$min_pressure, d$damage_norm))
+```
+
+
+```{r, results = "hide", cache = TRUE}
+# Poisson model
+set.seed(1)
+m12H3a <- ulam(
+    alist(
+        D ~ dpois(lambda),
+        log(lambda) <- a + bF*F + bP*P + bC*C +bFP*F*P + bFC*F*C + bPC*P*C + bFPC*F*P*C,
+        a ~ dnorm(0,5),
+        c(bF, bP, bC, bFP, bFC, bPC, bFPC) ~ dnorm(0,1)
+    ), data=d , chains=4 , cores=4, log_lik=TRUE)
+```
+
+```{r, results = "hide", cache = TRUE}
+set.seed(1)
+#Gamma poisson
+m12H3b <- ulam(
+    alist(
+        D ~ dgampois( lambda , phi ),
+        log(lambda) <- a + bF*F + bP*P + bC*C +bFP*F*P + bFC*F*C + bPC*P*C + bFPC*F*P*C,
+        a ~ dnorm(0,5),
+        c(bF, bP, bC, bFP, bFC, bPC, bFPC) ~ dnorm(0,1),
+        phi ~ dexp(1)
+    ), data=d , chains=4 , cores=4, log_lik=TRUE)
+```
+
+```{r}
+p12H3a <- precis(m12H3a)
+p12H3b <- precis(m12H3b)
+
+orderByRowname <-function(df){
+  return(df[ order(row.names(df)), ])
+} 
+
+print(orderByRowname(p12H3a))
+print(orderByRowname(p12H3b))
+```
+```{r}
+compare(m12H3a, m12H3b)
+```
+```{r}
+exp(coef(m12H3b)['bF'])
+```
+
+- ´bP´ is negative, meaning the stronger the strom the more deaths, as expected.
+- ´bC´ has the highst value amount coefficients, meaning damage costs are highly correlated with deaths.
+- According to WAIC, the Gamma-Poisson makes better preditions.
+- Femininity is weakly correated with death in the Gamma-Poisson model. An increase by 1 in femininity increases the number of deaths by about 1 +-1.
+
+## 12H4.
+
+Given: Hurricane data.
+
+Claim: The logarithm of storm strength is what matters.
+
+Want: Compare a model that uses ´log(damage_norm)´ to a model that uses ´damage_norm´ directly. Compare their DIC/WAIC values as well as their implied predictions. What do you conclude?
+
+Sol.:
+
+
+```{r}
+d$lC <- standardize(log(d$damage_norm))
+```
+
+```{r, results = "hide", cache = TRUE}
+set.seed(1)
+m12H4 <- ulam(
+    alist(
+        D ~ dgampois( lambda , phi ),
+        log(lambda) <- a + bF*F + bP*P + bC*lC +bFP*F*P + bFC*F*lC + bPC*P*lC + bFPC*F*P*lC,
+        a ~ dnorm(0,5),
+        c(bF, bP, bC, bFP, bFC, bPC, bFPC) ~ dnorm(0,1),
+        phi ~ dexp(1)
+    ), data=d , chains=4 , cores=4, log_lik=TRUE)
+```
+
+
+```{r}
+p12H4 <- precis(m12H4)
+print(orderByRowname(p12H3b))
+print(orderByRowname(p12H4))
+```
+```{r}
+compare(m12H3b, m12H4)
+```
+
+- According to WAIC, the model with the log of ´damage_norm´ makes better predictions.
+- Everything except the log of ´damage_norm´ has almost no influence on the number of death.
+
+## 12H5.
+
+Given: Trolley data.
+
+Want: Are Women more or less bothered by contact than men?
+
+```{r}
+data(Trolley)
+d <- Trolley
+
+head(d)
+```
+
+
+```{r}
+
+par(mfrow=c(1,2))
+simplehist(d[d$male==1 & d$contact ==1, c("response")], xlab="never(1) .. always(7) permissible")
+mtext("male responses to contact")
+
+simplehist(d[d$male==0 & d$contact ==1, c("response")], xlab="never(1) .. always(7) permissible")
+mtext("female responses to contact")
+```
+
+```{r}
+dat <- list(
+    R = d$response,
+    A = d$action,
+    I = d$intention,
+    C = d$contact,
+    M = d$male)
+str(dat)
+```
+
+
+```{r, results = "hide", cache = TRUE}
+m12H5a <- ulam(
+    alist(
+        R ~ dordlogit( phi , cutpoints ),
+        phi <- bA*A + bC*C + BI*I +bM*M + bCM*C*M ,
+        BI <- bI + bIA*A + bIC*C ,
+        c(bA,bI,bC,bM,bIA,bIC,bCM) ~ dnorm( 0 , 0.5 ),
+        cutpoints ~ dnorm( 0 , 1.5 )
+    ), data=dat , chains=4 , cores=4, log_lik = TRUE )
+```
+
+
+
+```{r}
+traceplot( m12H5a )
+```
+
+```{r, results = "hide", cache = TRUE}
+#dat$m <- d$male + 1
+#m12H5b <- ulam(
+#    alist(
+#        R ~ dordlogit( phi , cutpoints ),
+#        phi <- bA[m]*A + bC[m]*C + BI*I ,
+#        BI <- bI[m] + bIA[m]*A + bIC[m]*C ,
+#        c(bA[m],bI[m],bC[m],bIA[m],bIC[m]) ~ dnorm( 0 , 0.5 ),
+#        cutpoints ~ dnorm( 0 , 1.5 )
+#    ), data=dat , chains=4 , cores=4, log_lik = TRUE )
+
+# Index did not compile because:
+#SYNTAX ERROR, MESSAGE(S) FROM PARSER:
+#Dimension declaration requires expression denoting integer; found type=int[ ]
+# error in 'model4d491d55f2f9_bd64f564bd226da65a35f8cc707779e5' at line 10, column 13
+#  -------------------------------------------------
+#     8: }
+#     9: parameters{
+#    10:     real bIC[m];
+#                    ^
+#    11:     real bIA[m];
+#  -------------------------------------------------
+```
+
+```{r}
+precis( m12H5a, depth=2 )
+```
+
+- ´bM´ is positive, meaning men are less bothered, overall.
+- ´bCM´ is negative, meaning the men are relatively more bothered by contact.
+- ´bM´ is greater than ´bCM´, meaning by going by higher numbers, men are less bothered by contact.
+
+## 12H6.
+
+Given: Fish data (zero-inflated). 
+
+Want: How many fish does an average visitor take per hour, when fishing.
+
+Sol.:
+
+```{r}
+data(Fish)
+d <- Fish
+
+head(d)
+```
+
+```{r}
+simplehist( d$fish_caught , xlab="fish_caught" , lwd=4 )
+```
+
+
+```{r, results = "hide", cache = TRUE}
+# model with 0 predictor variables (offset log_hours).
+set.seed(1)
+d$log_hours <- log(d$hours)
+m12H6a <- ulam(
+    alist(
+        fish_caught ~ dzipois( p , lambda ),
+        logit(p) <- ap,
+        log(lambda) <- log_hours + al,
+        ap ~ dnorm( -1.5 , 1 ),
+        al ~ dnorm( 1 , 0.5 )
+    ) , data=d , chains=4, cores = 4, log_lik = TRUE )
+```
+
+```{r}
+traceplot(m12H6a)
+```
+
+```{r}
+precis( m12H6a )
+```
+
+```{r, results = "hide", cache = TRUE}
+# Sermon on priors.
+set.seed(1)
+m12H6a.prior <- extract.prior( m12H6a)
+precis(m12H6a.prior)
+```
+
+```{r}
+mean( inv_logit( m12H6a.prior$ap ) ) # probability fish
+mean( exp( m12H6a.prior$al ) )       # rate fishing per hour, when fishing
+```
+
+```{r}
+set.seed(1)
+d$m12H6a_penalty <- WAIC(m12H6a, pointwise = TRUE)$penalty
+d$m12H6a_k <- PSIS(m12H6a, pointwise = TRUE)$k
+d[d$m12H6a_k > 0.5,]
+```
+
+```{r}
+# post fishing rate
+set.seed(1)
+m12H6a.link <- link( m12H6a, data=d )
+mean(m12H6a.link$lambda)
+```
+
+
+```{r}
+logit(0.99) # livebait 99 % sure fishing
+logit(0.1) # 10 percent for every other variable
+exp(0.1) # livebait, persons increases fishing rate by 50 %
+exp(0.5) # camper increases fishing rate by 10 %
+```
+
+```{r, results = "hide", cache = TRUE}
+# model with all veriables but without interaction effects.
+set.seed(1)
+m12H6b <- ulam(
+    alist(
+        fish_caught ~ dzipois( p , lambda ),
+        logit(p) <- ap + bpL*livebait + bpC*camper + bpP*persons + bpC*child + bpH*log_hours,
+        log(lambda) <- log_hours + al + blL*livebait + blC*camper + blP*persons ,
+        c(bpL) ~ dnorm( 4.6 , 0.1 ),
+        c(ap,bpC,bpP,bpC,bpH) ~ dnorm( -2.2 , 1 ),
+        al ~ dnorm( 1 , 0.5 ),
+        c(blC) ~ dnorm( 1.1 , 0.5 ),
+        c(blL,blP) ~ dnorm( 1.6 , 0.5 )
+    ) , data=d , chains=4, cores = 4, log_lik = TRUE )
+```
+
+```{r}
+traceplot(m12H6b)
+```
+
+```{r}
+precis(m12H6b)
+```
+
+```{r}
+set.seed(1)
+d$m12H6b_penalty <- WAIC(m12H6b, pointwise = TRUE)$penalty
+d$m12H6b_k <- PSIS(m12H6b, pointwise = TRUE)$k
+d[d$m12H6b_k > 0.5,]
+```
+
+```{r}
+compare(m12H6a,m12H6b)
+```
+
+```{r}
+m12H6a.sim <- sim(m12H6a, data=d)
+m12H6b.sim <- sim(m12H6b, data=d)
+```
+
+```{r}
+par(mfrow=c(1,3))
+simplehist( d$fish_caught , xlab="fish_caught" , lwd=4 )
+mtext("original data")
+simplehist(apply(m12H6a.sim,2, mean), xlab="fish_caught" , lwd=4 )
+mtext("m12H6a")
+simplehist(apply(m12H6b.sim,2, mean), xlab="fish_caught" , lwd=4 )
+mtext("m12H6b")
+```
+
+```{r}
+set.seed(1)
+m12H6b.link <- link( m12H6b, data=d )
+mean(m12H6b.link$lambda)
+```
+
+```{r}
+# Plausibility check
+dfished <- d[d$fish_caught>0,]
+mean(dfished$fish_caught/dfished$hours)
+```
+
+
+- In terms of model precision, no. 89, 160 in the list are problematic.
+- Despite of that, the model which best explains the data predicts a rate of 3.7 fishes per hour. 
+- The prediction seems to be high, because everybody who caught something has a lower rate on average (2.6 < 3.7).
