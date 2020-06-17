@@ -1,0 +1,656 @@
+---
+title: "Chapter 13"
+author: "jim108@gmx.net"
+date: "6/15/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(rethinking)
+```
+
+## 13E1.
+
+Want: Which of the following priors will produce more shrinkage in the estimates? 
+
+1. $\alpha_{TANK} \sim Normal(0, 1)$
+1. $\alpha_{TANK} \sim Normal(0, 2)$.
+
+Sol: 1. The variance is lower, it is more a regularizing prior.
+
+## 13E2.
+
+Given:
+
+$y_i \sim Binomial(1, p_i)$
+
+$logit(p_i) = \alpha_{GROUP[i]} + \beta x_i$
+
+$\alpha_{GROUP} \sim Normal(0,10)$
+
+$\beta \sim Normal(0,1)$.
+
+Want: Multilevel model.
+
+Sol.:
+
+$y_i \sim Normal(1, p_i)$
+
+$logit(p_i) = \alpha_{GROUP[i]} + \beta_i x_i$
+
+$\alpha_{j} \sim Normal(\mu_{\alpha},\sigma_{\alpha})$
+
+$\mu_{\alpha} \sim Normal(0, 10)$
+
+$\sigma_{\alpha} \sim Exp(1/10)$
+
+$\beta_j \sim Normal(\mu_{\beta},\sigma_{\beta})$
+
+$\mu_{\beta} \sim Normal(0, 1)$
+
+$\sigma_{\beta}  \sim Exp(1)$.
+
+
+## 13E3.
+
+Given:
+
+$y_i \sim Normal(\mu_i, \sigma)$
+
+$\mu_i = \alpha_{GROUP[i]} + \beta x_i$
+
+$\alpha_{GROUP} \sim Normal(0,10)$
+
+$\beta \sim Normal(0,1)$
+
+$\sigma \sim HalfCauchy(0,2)$.
+
+Want: Multilevel model.
+
+Sol.:
+
+$y_i \sim Normal(\mu_i, \sigma)$
+
+$\mu_i = \alpha_{GROUP[i]} + \beta_i x_i$
+
+$\alpha_j \sim Normal(\mu_{\alpha},\sigma_{\alpha})$
+
+$\mu_{\alpha} \sim Normal(0, 10)$
+
+$\sigma_{\alpha} \sim Exp(1/10)$
+
+$\beta_j \sim Normal(\mu_{\beta},\sigma_{\beta})$
+
+$\mu_{\beta} \sim Normal(0, 1)$
+
+$\mu_{\beta} \sim Exp(1)$
+
+$\sigma \sim HalfCauchy(0,2)$.
+
+
+## 13E4.
+
+Want: Mathematical model formula for a Poisson regression with varying intercepts.
+
+Sol.:
+
+E. g. waiting time for a response email (T) depending on sender group (G).
+
+$T_i \sim Poisson(\lambda_i)$
+
+$log(\lambda_i) = \alpha_{G[i]}$
+
+$\alpha_{j} \sim Normal( \mu_{\alpha}, \sigma_{\alpha})$
+
+$\mu_{\alpha} \sim Normal(0, 1)$
+
+$\sigma_{\alpha} \sim Exp(1)$.
+
+
+## 13E5.
+
+Want: Mathematical model formula for a Poisson regression with two different kinds of varying intercepts, a cross-classified model.
+
+Sol.:
+
+E. g. waiting time for a response email (T) depending on sender group (G) and hour send (H).
+
+$T_i \sim Poisson(\lambda_i)$
+
+$log(\lambda_i) = \alpha_{G[i]} + \beta_{H[i]}$
+
+$\alpha_{j} \sim Normal( \mu_{\alpha}, \sigma_{\alpha})$
+
+$\mu_{\alpha} \sim Normal(0, 1)$
+
+$\sigma_{\alpha} \sim Exp(1)$
+
+$\beta_{j} \sim Normal( \mu_{\beta}, \sigma_{\beta})$
+
+$\mu_{\beta} \sim Normal(0, 1)$
+
+$\sigma_{\beta} \sim Exp(1)$.
+
+## 13M1.
+
+Given: Tadpoles data.
+
+Want: Add `predation` and `size` treatment variables. Model main effect alone, both main effects, main effects and interaction. Why does the variation change across models?
+
+Sol.:
+
+```{r}
+data(reedfrogs)
+d <- reedfrogs
+str(d)
+```
+
+```{r, results = "hide", cache = TRUE}
+d$tank <- 1:nrow(d)
+
+dat <- list(
+    S = d$surv,
+    N = d$density,
+    pred = d$pred,
+    siz = d$size,
+    tank = d$tank )
+```
+
+```{r, results = "hide", cache = TRUE}
+# Original model
+m13.2 <- ulam(
+    alist(
+        S ~ dbinom( N , p ) ,
+        logit(p) <- a[tank] ,
+        a[tank] ~ dnorm( a_bar , sigma ) ,
+        a_bar ~ dnorm( 0 , 1.5 ) ,
+        sigma ~ dexp( 1 )
+    ), data=dat , chains=4 , log_lik=TRUE )
+```
+```{r}
+# 95 % interval for a_pred.
+cat(inv_logit(-0.2),inv_logit(0.2))
+# weaker priors lead to non-effictive sampling.
+```
+
+```{r, results = "hide", cache = TRUE}
+# Model with predator
+m13M1p <- ulam(
+    alist(
+        S ~ dbinom( N , p ) ,
+        logit(p) <- a_tank[tank] + b_pred*pred ,
+        a_tank[tank] ~ dnorm( a , sigma ) ,
+        a ~ dnorm(0,1.5) ,
+        sigma ~ dexp(1),
+        b_pred ~ dnorm(0,0.1)
+    ), data=dat , chains=4 , cores=4, log_lik=TRUE )
+```
+
+```{r, results = "hide", cache = TRUE}
+# Model with size
+m13M1s <- ulam(
+    alist(
+        S ~ dbinom( N , p ) ,
+        logit(p) <- a_tank[tank] + b_siz*siz,
+        a_tank[tank] ~ dnorm( a , sigma ) ,
+        a ~ dnorm(0,1.5) ,
+        sigma ~ dexp(1),
+        b_siz ~ dnorm(0,0.1)
+    ), data=dat , chains=4 , cores=4, log_lik=TRUE )
+```
+
+```{r, results = "hide", cache = TRUE}
+# Model with predator and size
+m13M1ps <- ulam(
+    alist(
+        S ~ dbinom( N , p ) ,
+        logit(p) <- a_tank[tank] + b_pred*pred + b_siz*siz,
+        a_tank[tank] ~ dnorm( a , sigma ) ,
+        a ~ dnorm(0,1.5) ,
+        sigma ~ dexp(1),
+        b_pred ~ dnorm(0,0.05),
+        b_siz ~ dnorm(0, 0.05)
+    ), data=dat , chains=4 , cores=4, log_lik=TRUE )
+```
+
+```{r, results = "hide", cache = TRUE}
+# Model with predator and size + interaction
+m13M1psi <- ulam(
+    alist(
+        S ~ dbinom( N , p ) ,
+        logit(p) <- a_tank[tank] + b_pred*pred + b_ps*pred*siz + b_siz*siz,
+        a_tank[tank] ~ dnorm( a , sigma ) ,
+        a ~ dnorm(0,1.5) ,
+        sigma ~ dexp(1),
+        b_pred ~ dnorm(0,0.05),
+        b_siz ~ dnorm(0, 0.05),
+        b_ps ~ dnorm(0, 0.05)
+    ), data=dat , chains=4 , cores=4, log_lik=TRUE )
+```
+
+```{r}
+precis(m13M1p)
+precis(m13M1s)
+precis(m13M1ps)
+precis(m13M1psi)
+```
+
+```{r}
+models <- c(m13M1p, m13M1s, m13M1ps, m13M1psi)
+precis_list <- sapply(models, function(m) precis(m, depth=2))
+
+plot(d$tank, d$propsurv, ylim=c(0,1), pch=19, xlab="tank", ylab="survivors")
+abline(h=mean(d$propsurv))
+for (i in 1:length(models)) {
+  p_a <-inv_logit(precis_list[,i]$mean[1:48])
+#  abline( h=mean(p_a) , lty=i )
+  points(d$tank, p_a, pch=i-1)
+}
+legend("bottomleft", legend=c("data", "pred model", "size model", "ps model", "psi model"),
+       pch=c(19,0,1,2,3))
+mtext("mean plot")
+```
+
+```{r}
+plot(d$tank, d$propsurv, ylim=c(0,1), pch=19, xlab="tank", ylab="survivors")
+abline(h=mean(d$propsurv))
+for (i in 1:length(models)) {
+  p_a <-inv_logit(precis_list[,i]$sd[1:48])
+  points(d$tank, p_a, pch=i-1)
+}
+legend("bottomleft", legend=c("data", "pred model", "size model", "ps model", "psi model"),
+       pch=c(19,0,1,2,3))
+mtext("sd plot")
+```
+
+- The mean plot shows that the predictions shrink to the mean in the following order: pred model, pred and size interation model, pred and size model, size model. 
+- The sd plot does not show significat change in the standard deviation resp. variance.
+
+
+## 13M2.
+
+Given: 13M1.
+
+Want: Compare WAIC.
+
+Sol.:
+
+```{r}
+compare( m13M1p, m13M1s, m13M1ps, m13M1psi )
+```
+
+- The full interaction model performs best, as expected. There are only small differences between WAIC values/models.
+
+## 13M4.
+
+Given: Tadpoles data,
+
+```{r, results = "hide", cache = TRUE}
+m13.2 <- ulam(
+    alist(
+        S ~ dbinom( N , p ) ,
+        logit(p) <- a[tank] ,
+        a[tank] ~ dnorm( a_bar , sigma ) ,
+        a_bar ~ dnorm( 0 , 1 ) ,
+        sigma ~ dexp( 1 )
+    ), data=dat , chains=4 , cores = 4, log_lik=TRUE )
+```
+
+Want: Replace `a[tank] ~ dnorm( a_bar , sigma )` by `a[tank] ~ dcauchy( a_bar , sigma )`. Compare intercepts.
+
+Sol.:
+
+```{r, results = "hide", cache = TRUE}
+m13M3 <- ulam(
+    alist(
+        S ~ dbinom( N , p ) ,
+        logit(p) <- a[tank] ,
+        a[tank] ~ dcauchy( a_bar , sigma ) ,
+        a_bar ~ dnorm( 0 , 1 ) ,
+        sigma ~ dexp( 1 )
+    ), data=dat , chains=4 , cores = 4, log_lik=TRUE, iter=1e4, control = list(adapt_delta=0.99) )
+```
+
+
+```{r}
+models <- c(m13.2, m13M3)
+precis_list <- sapply(models, function(m) precis(m, depth=2))
+
+plot(d$tank, d$propsurv, ylim=c(0,1), pch=19, xlab="tank", ylab="survivors")
+abline(h=median(d$propsurv))
+for (i in 1:length(models)) {
+  p_a <-inv_logit(precis_list[,i]$mean[1:48])
+#  abline( h=median(p_a) , lty=i )
+  points(d$tank, p_a, pch=i-1)
+}
+legend("bottomleft", legend=c("data", "Gaussian priors", "Cauchy priors"),
+       pch=c(19,0,1))
+mtext("mean plot")
+```
+
+- Increase the number of iterations and the adaptive delta did not solve for divergent transitions for the model with the Cauchy priors.
+- The mean plot shows, for predictions below the mean, Cauchy priors regularize more than Gaussians, above it is the opposite.
+
+## 13M4.
+
+Given: Chimpanzee data.
+
+Want: Use an adaptive prior for blocks:
+
+$\gamma_j \sim Normal(\bar{\gamma},\sigma)$
+
+$\bar{\gamma} \sim Normal(0, 1.5)$
+
+Sol.:
+
+
+```{r}
+data(chimpanzees)
+d <- chimpanzees
+d$treatment <- 1 + d$prosoc_left + 2*d$condition
+
+dat_list <- list(
+    pulled_left = d$pulled_left,
+    actor = d$actor,
+    block_id = d$block,
+    treatment = as.integer(d$treatment) )
+```
+
+```{r, results = "hide", cache = TRUE}
+set.seed(13)
+m13.4 <- ulam(
+    alist(
+        pulled_left ~ dbinom( 1 , p ) ,
+        logit(p) <- a[actor] + g[block_id] + b[treatment] ,
+        b[treatment] ~ dnorm( 0 , 0.5 ),
+      ## adaptive priors
+        a[actor] ~ dnorm( a_bar , sigma_a ),
+        g[block_id] ~ dnorm( 0 , sigma_g ),
+      ## hyper-priors
+        a_bar ~ dnorm( 0 , 1.5 ),
+        sigma_a ~ dexp(1),
+        sigma_g ~ dexp(1)
+    ) , data=dat_list , chains=4 , cores=4 , log_lik=TRUE, warmup=1000 , iter=6000 )
+```
+
+```{r}
+divergent(m13.4)
+```
+
+
+```{r, results = "hide", cache = TRUE}
+set.seed(13)
+m13.4nc <- ulam(
+    alist(
+        pulled_left ~ dbinom( 1 , p ) ,
+        logit(p) <- a_bar + z[actor]*sigma_a + # actor intercepts
+                    x[block_id]*sigma_g +      # block intercepts
+                    b[treatment] ,
+        b[treatment] ~ dnorm( 0 , 0.5 ),
+        z[actor] ~ dnorm( 0 , 1 ),
+        x[block_id] ~ dnorm( 0 , 1 ),
+        a_bar ~ dnorm( 0 , 1.5 ),
+        sigma_a ~ dexp(1),
+        sigma_g ~ dexp(1),
+        gq> vector[actor]:a <<- a_bar + z*sigma_a,
+        gq> vector[block_id]:g <<- x*sigma_g
+    ) , data=dat_list , chains=4 , cores=4 , log_lik=TRUE, control = list(adapt_delta=0.99), iter=1e4)
+```
+
+
+```{r, results = "hide", cache = TRUE}
+set.seed(13)
+m13M4 <- ulam(
+    alist(
+        pulled_left ~ dbinom( 1 , p ) ,
+        logit(p) <- a_bar + z[actor]*sigma_a + # actor intercepts
+                    g_bar + x[block_id]*sigma_g +      # block intercepts
+                    b[treatment] ,
+        b[treatment] ~ dnorm( 0 , 0.5 ),
+        z[actor] ~ dnorm( 0 , 1 ),
+        x[block_id] ~ dnorm( 0 , 1 ),
+        a_bar ~ dnorm( 0 , 1.5 ),
+        g_bar ~ dnorm( 0 , 1.5 ),
+        sigma_a ~ dexp(1),
+        sigma_g ~ dexp(1),
+        gq> vector[actor]:a <<- a_bar + z*sigma_a,
+        gq> vector[block_id]:g <<- g_bar + x*sigma_g
+    ) , data=dat_list , chains=4 , cores=4, log_lik = TRUE )
+```
+
+```{r}
+coeftab( m13.4nc , m13M4 )
+```
+```{r}
+p_link_abar <- function( treatment ) {
+    logodds <- with( post , a_bar + b[,treatment] )
+    return( inv_logit(logodds) )
+}
+
+post <- extract.samples(m13.4nc)
+p_raw <- sapply( 1:4 , function(i) p_link_abar( i ) )
+p_mu <- apply( p_raw , 2 , mean )
+p_ci <- apply( p_raw , 2 , PI )
+
+plot( NULL , xlab="treatment" , ylab="proportion pulled left" ,
+    ylim=c(0,1) , xaxt="n" , xlim=c(1,4), ann=FALSE )
+axis( 1 , at=1:4 , labels=c("R/N","L/N","R/P","L/P") )
+lines( 1:4 , p_mu )
+lines( 1:4 , p_ci[1,])
+lines( 1:4 , p_ci[2,])
+shade( p_ci , 1:4 )
+
+post <- extract.samples(m13M4)
+p_raw <- sapply( 1:4 , function(i) p_link_abar( i ) )
+p_mu <- apply( p_raw , 2 , mean )
+p_ci <- apply( p_raw , 2 , PI )
+
+axis( 1 , at=1:4 , labels=c("R/N","L/N","R/P","L/P") )
+lines( 1:4 , p_mu, lty=2 )
+shade( p_ci , 1:4)
+lines( 1:4 , p_ci[1,], lty=2 )
+lines( 1:4 , p_ci[2,], lty=2 )
+legend("bottomleft", legend=c("m13.4nc", "m13M4"), lty=c(1,2))
+
+```
+
+- m13.4 had divergent transition, therefore m13.4nc was used.
+- m13.4nc produces higher mean probabilies for every treatment.
+- m13.4nc produces produces a tighter 95% interval.
+
+## 13H1.
+
+Given: Bangladesh contraception data.
+
+Want: Predict `use.contraception` clustered by `district_id`. (a) Fit a traditional fixed-effects model that uses dummy variables for district. (b) Fit a multilevel model with varying intercepts for district. Plot the predicted proportions of women in each district using contraception.
+
+```{r}
+data("bangladesh")
+d <- bangladesh
+
+sort(unique(d$district))
+```
+
+```{r}
+d$district_id <- as.integer(as.factor(d$district))
+sort(unique(d$district_id))
+```
+```{r}
+head(d)
+```
+
+
+```{r}
+dat <- list(
+    C = d$use.contraception,
+    D = d$district_id)
+```
+
+```{r, results = "hide", cache = TRUE}
+set.seed(13)
+m13H1a <- ulam(
+    alist(
+        C ~ dbinom( 1 , p ) ,
+        logit(p) <- a[D],
+        a[D] ~ dnorm( 0 , 1 )
+    ) , data=dat , chains=4 , cores=4 , log_lik=TRUE)
+```
+
+```{r, results = "hide", cache = TRUE}
+set.seed(13)
+m13H1b <- ulam(
+    alist(
+        C ~ dbinom( 1 , p ) ,
+        logit(p) <- a[D],
+        a[D] ~ dnorm( mu_a , sigma_a ),
+        mu_a ~ dnorm(0, 1),
+        sigma_a ~ dexp(1)
+    ) , data=dat , chains=4 , cores=4 , log_lik=TRUE)
+```
+
+
+
+```{r}
+set.seed(13)
+d_agg <- aggregate(dat$C, by=list(D=dat$D), FUN=sum)
+d_agg$p <- d_agg$x/max(d_agg$x)
+
+m13H1a.sim.C <- sim(m13H1a, data=list(D=dat$D))
+m13H1a.sim.C.mean <- apply(m13H1a.sim.C, 2, mean)
+d13H1a_agg <- aggregate(m13H1a.sim.C.mean, by=list(D=dat$D), FUN=sum)
+d13H1a_agg$p <- d13H1a_agg$x/max(d13H1a_agg$x)
+
+m13H1b.sim.C <- sim(m13H1b, data=list(D=dat$D))
+m13H1b.sim.C.mean <- apply(m13H1b.sim.C, 2, mean)
+d13H1b_agg <- aggregate(m13H1b.sim.C.mean, by=list(D=dat$D), FUN=sum)
+d13H1b_agg$p <- d13H1b_agg$x/max(d13H1b_agg$x)
+```
+
+```{r}
+plot(d_agg$D, d_agg$p, pch=19, xlab="district", ylab="contraception")
+abline(h=mean(d_agg$p))
+points(d13H1a_agg$D, d13H1a_agg$p, pch=1)
+points(d13H1b_agg$D, d13H1b_agg$p, pch=3)
+legend("topright", legend=c("data", "m13H1a", "m13H1b"), pch=c(19,1,3))
+mtext("mean plot")
+```
+
+```{r}
+mcoefs <- coeftab(m13H1a, m13H1b)@coefs
+mdiff <- mcoefs[,1] - mcoefs[,2]
+mdiff <- mdiff[order(mdiff)]
+head(mdiff, n=10)
+```
+
+- Generally m13H1b does produce slightly higher intercepts.
+- The biggest difference between the mean values of the models are at district 11, 24,10, 58, 49.
+
+## 12H2.
+
+Given: Trolley data.
+
+Want: Varying intercepts model with `action`, `intention` and `contact` as ordinary terms, (a) with clustering intercepts on `id`, (b) without clustering. Compare with WAIC and posterior predictions.
+
+Sol.:
+
+```{r}
+data(Trolley)
+d <- Trolley
+
+head(d)
+```
+
+```{r}
+dat <- list(
+    R = d$response,
+    A = d$action,
+    I = d$intention,
+    C = d$contact,
+    cid = as.factor(d$id))
+str(dat)
+```
+
+```{r, results = "hide", cache = TRUE}
+m13H2a <- ulam(
+    alist(
+        R ~ dordlogit( phi , cutpoints ),
+        phi <- bA[cid]*A + bI[cid]*I + bC[cid]*C,
+        bA[cid] ~ dnorm( mu_b , sigma_b ),
+        bI[cid] ~ dnorm( mu_b , sigma_b ),
+        bC[cid] ~ dnorm( mu_b , sigma_b ),
+        mu_b ~ dnorm( 0 , 0.5 ) ,
+        sigma_b ~ dexp( 1 ),
+        cutpoints ~ dnorm( 0 , 1.5 )
+    ), data=dat , chains=4 , cores=4, log_lik = TRUE )
+```
+
+```{r, results = "hide", cache = TRUE}
+m13H2b <- ulam(
+    alist(
+        R ~ dordlogit( phi , cutpoints ),
+        phi <- bA[cid]*A + bI[cid]*I + bC[cid]*C,
+        bA[cid] ~ dnorm( 0 , 0.5 ),
+        bI[cid] ~ dnorm( 0 , 0.5 ),
+        bC[cid] ~ dnorm( 0 , 0.5 ),
+        cutpoints ~ dnorm( 0 , 1.5 )
+    ), data=dat , chains=4 , cores=4, log_lik = TRUE )
+```
+
+```{r}
+compare(m13H2a, m13H2b)
+```
+
+```{r}
+mcoefs <- coeftab(m13H2a, m13H2b)@coefs
+mdiff <- mcoefs[,1] - mcoefs[,2]
+mdiff <- mdiff[order(mdiff)]
+head(mdiff, n=10)
+```
+```{r}
+mdiff <- mdiff[order(-mdiff)]
+head(mdiff, n=10)
+```
+
+- In terms of WAIC values the m13H2a performs better than m13H2b.
+
+## 13H3.
+
+Given: 13H2.
+
+Want: Varying intercepts model with `action`, `intention` and `contact` as ordinary terms with clustering intercepts on `id` and `story`. Compare to 13H2.
+
+Sol.:
+```{r}
+id_stories <- interaction(d$id,d$story, sep = ":")
+
+str(id_stories)
+```
+
+```{r}
+dat <- list(
+    R = d$response,
+    A = d$action,
+    I = d$intention,
+    C = d$contact,
+    cis = as.factor(id_stories)
+)
+str(dat)
+```
+
+```
+{r, results = "hide", cache = TRUE}
+m13H3 <- ulam(
+    alist(
+        R ~ dordlogit( phi , cutpoints ),
+        phi <- bA[cis]*A + bI[cis]*I + bC[cis]*C,
+        bA[cis] ~ dnorm( mu_b , sigma_b ),
+        bI[cis] ~ dnorm( mu_b , sigma_b ),
+        bC[cis] ~ dnorm( mu_b , sigma_b ),
+        mu_b ~ dnorm( 0 , 0.5 ) ,
+        sigma_b ~ dexp( 1 ),
+        cutpoints ~ dnorm( 0 , 1.5 )
+    ), data=dat , chains=4 , cores=4, log_lik = TRUE )
+#system call failed: Cannot allocate memoryerror in running command
+```
+
