@@ -1,0 +1,788 @@
+---
+title: "Chapter 14"
+author: "jim108@gmx.net"
+date: "6/22/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message = FALSE, warning = FALSE}
+library(rethinking)
+library(ape)
+library(MASS)
+library(ellipse)
+```
+
+## 14E1.
+
+Given:
+
+$y_i \sim Normal(\mu_i, \sigma)$
+
+$\mu_i = \alpha_{GROUP[i]} + \beta x_i$
+
+$\alpha_{GROUP} \sim Normal(\alpha, sigma_{\alpha})$
+
+$\alpha \sim Normal(0, 10)$
+
+$\beta \sim Normal(0, 1)$
+
+$\sigma \sim HalfCauchy(0, 2)$
+
+$\sigma_{\alpha} \sim HalfCauchy(0, 2)$.
+
+Want: Add varying slopes on the predictor $x$.
+
+Sol.:
+
+$y_i \sim Normal(\mu_i, \sigma)$
+
+$\mu_i = \alpha_{GROUP[i]} + \beta x_i$
+
+$\alpha_{GROUP} \sim Normal(\alpha, sigma_{\alpha})$
+
+$\alpha \sim Normal(0, 10)$
+
+$\beta \sim Normal(0, \sigma_{\beta})$
+
+$\sigma \sim HalfCauchy(0, 2)$
+
+$\sigma_{\alpha} \sim HalfCauchy(0, 2)$
+
+$\sigma_{\beta} \sim HalfCauchy(0, 1)$.
+
+
+## 14E2.
+
+Want: Example of varying intercepts with positively correlated varying slops.
+
+Sol.: An electrition drives around and checks the energy input of different solar panels mounted in different regions from 8 a.m. till 1 p.m.. In the morning the energy will be low, even in regions with more sunlight and more efficient panels, compared to panels checked at noon.
+
+## 14E3.
+
+Want: When is it possible for a varying slopes model to have fewer effective parameters (as estimated by WAIC or DIC) than the corresponding model with fixed (unpooled) slopes? Explain.
+
+Sol.: An unpooled model has always a higher or equaly high number of parameters than pooled model.
+
+
+## 14M1.
+
+Given: Café robot simulation with $\rho=0$.
+
+Want: How does the posterior distribution of the correlation reflect this change in the underlying simulation?
+
+Sol.:
+
+```{r}
+geN_cafes <- function(rho){
+  a <- 3.5            # average morning wait time
+  b <- (-1)           # average difference afternoon wait time
+  sigma_a <- 1        # std dev in intercepts
+  sigma_b <- 0.5      # std dev in slopes
+  #rho <- 0       # correlation between intercepts and slopes
+  
+  ## R code 14.2
+  Mu <- c( a , b )
+  
+  ## R code 14.5
+  sigmas <- c(sigma_a,sigma_b) # standard deviations
+  Rho <- matrix( c(1,rho,rho,1) , nrow=2 ) # correlation matrix
+  
+  # now matrix multiply to get covariance matrix
+  Sigma <- diag(sigmas) %*% Rho %*% diag(sigmas)
+  
+  ## R code 14.6
+  N_cafes <- 20
+  
+  ## R code 14.7
+  set.seed(5) # used to replicate example
+  vary_effects <- mvrnorm( N_cafes , Mu , Sigma )
+  
+  ## R code 14.8
+  a_cafe <- vary_effects[,1]
+  b_cafe <- vary_effects[,2]
+  
+  ## R code 14.10
+  set.seed(22)
+  N_visits <- 10
+  afternoon <- rep(0:1,N_visits*N_cafes/2)
+  cafe_id <- rep( 1:N_cafes , each=N_visits )
+  mu <- a_cafe[cafe_id] + b_cafe[cafe_id]*afternoon
+  sigma <- 0.5  # std dev within cafes
+  wait <- rnorm( N_visits*N_cafes , mu , sigma )
+  return(list(d=data.frame( cafe=cafe_id , afternoon=afternoon , wait=wait), N_cafes=N_cafes, vary_effects=vary_effects, Mu=Mu, Sigma=Sigma))
+}
+
+cafes.gen.rho0 <- geN_cafes(rho=0)
+cafes.gen.rho0.7 <- geN_cafes(rho=-0.7)
+```
+
+```{r}
+plot_cafes <- function(cafes.gen, title){
+  
+  a_cafe <- cafes.gen$vary_effects[,1]
+  b_cafe <- cafes.gen$vary_effects[,2]
+  plot( a_cafe , b_cafe , col=rangi2 ,
+      xlab="intercepts (a_cafe)" , ylab="slopes (b_cafe)", ylim=c(0,-2), xlim=c(2,6))
+  
+  # overlay population distribution
+  for ( l in c(0.1,0.3,0.5,0.8,0.99) )
+      lines(ellipse(cafes.gen$Sigma,centre=cafes.gen$Mu,level=l),col=col.alpha("black",0.2))
+  mtext(title)
+}
+
+par(mfrow=c(1,2))
+plot_cafes(cafes.gen.rho0, "rho=0")
+plot_cafes(cafes.gen.rho0.7, "rho=-0.7")
+```
+
+
+```{r}
+l14M1 <- alist(
+        wait ~ normal( mu , sigma ),
+        mu <- a_cafe[cafe] + b_cafe[cafe]*afternoon,
+        c(a_cafe,b_cafe)[cafe] ~ multi_normal( c(a,b) , Rho , sigma_cafe ),
+        a ~ normal(5,2),
+        b ~ normal(-1,0.5),
+        sigma_cafe ~ exponential(1),
+        sigma ~ exponential(1),
+        Rho ~ lkj_corr(2)
+    )
+```
+
+
+```{r, results = "hide", cache = TRUE}
+set.seed(867530)
+m14M1a <- ulam(l14M1, data=cafes.gen.rho0$d , chains=4 , cores=4, log_lik = TRUE )
+```
+
+```{r, results = "hide", cache = TRUE}
+set.seed(867530)
+m14M1b <- ulam(l14M1, data=cafes.gen.rho0.7$d , chains=4 , cores=4, log_lik = TRUE )
+```
+
+
+```{r}
+plot_post <- function(model=m14M1a,cafe_data=cafes.gen.rho0, title){
+  N_cafes <- cafe_data$N_cafes
+  d <- cafe_data$d
+
+  ## R code 14.14
+  # compute unpooled estimates directly from data
+  a1 <- sapply( 1:N_cafes ,
+          function(i) mean(d$wait[d$cafe==i & d$afternoon==0]) )
+  b1 <- sapply( 1:N_cafes ,
+          function(i) mean(d$wait[d$cafe==i & d$afternoon==1]) ) - a1
+  
+  # extract posterior means of partially pooled estimates
+  post <- extract.samples(model)
+  a2 <- apply( post$a_cafe , 2 , mean )
+  b2 <- apply( post$b_cafe , 2 , mean )
+  
+  # plot both and connect with lines
+  plot( a1 , b1 , xlab="intercept" , ylab="slope" ,
+      pch=16 , col=rangi2 , ylim=c( min(b1)-0.1 , max(b1)+0.1 ) ,
+      xlim=c( min(a1)-0.1 , max(a1)+0.1 ) )
+  points( a2 , b2 , pch=1 )
+  for ( i in 1:N_cafes ) lines( c(a1[i],a2[i]) , c(b1[i],b2[i]) )
+    ## R code 14.15
+  # compute posterior mean bivariate Gaussian
+  Mu_est <- c( mean(post$a) , mean(post$b) )
+  rho_est <- mean( post$Rho[,1,2] )
+  sa_est <- mean( post$sigma_cafe[,1] )
+  sb_est <- mean( post$sigma_cafe[,2] )
+  cov_ab <- sa_est*sb_est*rho_est
+  Sigma_est <- matrix( c(sa_est^2,cov_ab,cov_ab,sb_est^2) , ncol=2 )
+  
+
+  for ( l in c(0.1,0.3,0.5,0.8,0.99) )
+      lines(ellipse(Sigma_est,centre=Mu_est,level=l),
+          col=col.alpha("black",0.2))
+  mtext(title)
+}
+
+par(mfrow=c(1,2))
+plot_post(model=m14M1a, cafe_data=cafes.gen.rho0, "rho=0")
+plot_post(model=m14M1b, cafe_data=cafes.gen.rho0.7, "rho=-0.7")
+```
+
+## 14M2.
+
+Given: Café data, model m14M2:
+
+$W_i \sim Normal(\mu_i, \sigma)$
+
+$\mu_i = \alpha_{CAFE[i]} + \beta_{CAFE[i]} A_i$
+
+$\alpha_{CAFE} \sim Normal(\alpha, sigma_{\alpha})$
+
+$\beta_{CAFE} \sim Normal(\beta, \sigma_{\beta})$
+
+$\alpha,\beta \sim Normal(0, 10)$
+
+$\sigma,\sigma_{\alpha},\sigma_{\beta} \sim HalfCauchy(0, 1)$.
+
+Want:  Fit model to data, compare to ´m14.1´.
+
+```{r}
+## R code 14.1
+a <- 3.5            # average morning wait time
+b <- (-1)           # average difference afternoon wait time
+sigma_a <- 1        # std dev in intercepts
+sigma_b <- 0.5      # std dev in slopes
+rho <- (-0.7)       # correlation between intercepts and slopes
+
+## R code 14.2
+Mu <- c( a , b )
+
+## R code 14.5
+sigmas <- c(sigma_a,sigma_b) # standard deviations
+Rho <- matrix( c(1,rho,rho,1) , nrow=2 ) # correlation matrix
+
+# now matrix multiply to get covariance matrix
+Sigma <- diag(sigmas) %*% Rho %*% diag(sigmas)
+
+## R code 14.6
+N_cafes <- 20
+
+## R code 14.7
+library(MASS)
+set.seed(5) # used to replicate example
+vary_effects <- mvrnorm( N_cafes , Mu , Sigma )
+
+## R code 14.8
+a_cafe <- vary_effects[,1]
+b_cafe <- vary_effects[,2]
+
+## R code 14.10
+set.seed(22)
+N_visits <- 10
+afternoon <- rep(0:1,N_visits*N_cafes/2)
+cafe_id <- rep( 1:N_cafes , each=N_visits )
+mu <- a_cafe[cafe_id] + b_cafe[cafe_id]*afternoon
+sigma <- 0.5  # std dev within cafes
+wait <- rnorm( N_visits*N_cafes , mu , sigma )
+d <- data.frame( cafe=cafe_id , afternoon=afternoon , wait=wait )
+```
+
+```{r, results = "hide", cache = TRUE}
+set.seed(867530)
+m14.1 <- ulam(
+    alist(
+        wait ~ normal( mu , sigma ),
+        mu <- a_cafe[cafe] + b_cafe[cafe]*afternoon,
+        c(a_cafe,b_cafe)[cafe] ~ multi_normal( c(a,b) , Rho , sigma_cafe ),
+        a ~ normal(5,2),
+        b ~ normal(-1,0.5),
+        sigma_cafe ~ exponential(1),
+        sigma ~ exponential(1),
+        Rho ~ lkj_corr(2)
+    ) , data=d , chains=4 , cores=4, iter=1e4, control = list(adapt_delta=0.99), log_lik = TRUE  )
+```
+
+```{r}
+p14.1 <- precis(m14.1, depth=3)
+p14.1[c("Rho[1,1]"),]
+p14.1[c("Rho[2,2]"),]
+```
+
+
+```{r, results = "hide", cache = TRUE}
+set.seed(867530)
+m14M2 <- ulam(
+    alist(
+        wait ~ normal( mu , sigma ),
+        mu <- a_cafe[cafe] + b_cafe[cafe]*afternoon,
+        a_cafe[cafe] ~ normal(a, sigma_a),
+        b_cafe[cafe] ~ normal(b, sigma_b),
+        c(a,b) ~ normal(0,10),
+        c(sigma, sigma_a, sigma_b) ~ half_cauchy(0,1)
+    ) , data=d , chains=4 , cores=4, log_lik = TRUE  )
+```
+
+```{r}
+compare(m14.1, m14M2)
+```
+
+- The model from the chapter `m14.1` produces `NAN` for the number of effective samples for `R[1,1]` and a low number number for `R[2,2]`. Increasing the number of iterations by 10 times, increase `adapt_delta` by 0.4 does not resolve this issue.
+- The model from the chapter `m14.1` has a slightly better WAIC value (within 1 std.).
+
+## 14M3.
+
+Given: `UCBadmit` data.
+
+Want: Re-estimate with varying slopes and non-centered parameters. Compare `n_eff`.
+
+Sol.:
+
+```{r}
+data(UCBadmit)
+d <- UCBadmit
+head(d)
+```
+
+```{r}
+dat_list <- list(
+    admit = d$admit,
+    applications = d$applications,
+    gid = ifelse( d$applicant.gender=="male" , 1 , 2 ),
+    dept_id = rep(1:6,each=2)
+)
+```
+
+
+```{r, results = "hide", cache = TRUE}
+set.seed(1)
+m11.7 <- ulam(
+    alist(
+        admit ~ dbinom( applications , p ) ,
+        logit(p) <- a[gid] ,
+        a[gid] ~ dnorm( 0 , 1.5 )
+    ) , data=dat_list , chains=4, cores=4, log_lik=TRUE )
+```
+
+```{r, results = "hide", cache = TRUE}
+set.seed(1)
+m14M3a <- ulam(
+    alist(
+        admit ~ dbinom( applications , p ) ,
+        logit(p) <- a[gid] + delta[dept_id,gid] ,
+        
+        # adaptive priors
+        vector[4]:delta[dept_id] ~ multi_normal(0,Rho_delta,sigma_delta),
+        
+        # fixed priors
+        a[gid] ~ dnorm( 0 , 1.5 ) ,
+        sigma_delta ~ dexp(1),
+        Rho_delta ~ dlkjcorr(4)
+    ) , data=dat_list , chains=4 , cores=4, log_lik = TRUE)
+```
+
+```{r, results = "hide", cache = TRUE}
+set.seed(1)
+m14M3b <- ulam(
+    alist(
+        admit ~ dbinom( applications , p ) ,
+        logit(p) <- a[gid] + delta[dept_id,gid] ,
+        
+        # adaptive priors
+        transpars> matrix[dept_id,4]:delta <-compose_noncentered( sigma_delta, L_Rho_delta, z_delta),
+        matrix[4,dept_id]:z_delta ~ normal(0, 1),
+        
+        # fixed priors
+        a[gid] ~ dnorm( 0 , 1.5 ) ,
+        vector[4]:sigma_delta ~ dexp(1),
+        cholesky_factor_corr[4]:L_Rho_delta ~ lkj_corr_cholesky(2),
+        
+        gq> matrix[4,4]:Rho_delta <<- Chol_to_Corr(L_Rho_delta)
+    ) , data=dat_list , chains=4 , cores=4, log_lik = TRUE)
+```
+
+
+```{r}
+plot_admissions <- function(model, title){
+  ## R code 11.30
+  post <- extract.samples(model)
+  diff_a <- post$a[,1] - post$a[,2]
+  diff_p <- inv_logit(post$a[,1]) - inv_logit(post$a[,2])
+  precis( list( diff_a=diff_a , diff_p=diff_p ) )
+  
+  ## R code 11.31
+  postcheck( model )
+  # draw lines connecting points from same dept
+  for ( i in 1:6 ) {
+      x <- 1 + 2*(i-1)
+      y1 <- d$admit[x]/d$applications[x]
+      y2 <- d$admit[x+1]/d$applications[x+1]
+      lines( c(x,x+1) , c(y1,y2) , col=rangi2 , lwd=2 )
+      text( x+0.5 , (y1+y2)/2 + 0.05 , d$dept[x] , cex=0.8 , col=rangi2 )
+  }
+}
+
+par(mfrow=c(1,2))
+plot_admissions(m14M3a)
+plot_admissions(m14M3b)
+```
+
+```{r}
+p14M3a <- precis(m14M3a, depth = 3)
+summary(p14M3a$n_eff)
+```
+```{r}
+p14M3b <- precis(m14M3b, depth = 3)
+summary(p14M3b$n_eff)
+```
+
+
+- m14M3a had 20 divergent transitions, m14M3b had non. 
+- The minimum number of effective samples for all variables was 3 times higher at the non-centered model.
+- The non-centered model sampels about 5 times faster than the centered model.
+- The infered coefficients are the same, therefore the non-centered model is better.
+
+## 14M4.
+
+Given: Oceanic tools data.
+
+Want: WAIC-compare model with distance matrix to model without distance matrix.
+
+Sol.:
+
+```{r}
+## R code 14.39
+data(Kline2) # load the ordinary data, now with coordinates
+d <- Kline2
+d$society <- 1:10 # index observations
+data(islandsDistMatrix)
+head(d)
+```
+
+
+```{r}
+dat_list <- list(
+    T = d$total_tools,
+    P = d$population,
+    society = d$society,
+    Dmat=islandsDistMatrix,
+    cid = d$contact_id)
+```
+
+
+```{r, results = "hide", cache = TRUE}
+m14M4a <- ulam(
+    alist(
+        T ~ dpois(lambda),
+        lambda <- (a*P^b/g)*exp(k[society]),
+        vector[10]:k ~ multi_normal( 0 , SIGMA ),
+        matrix[10,10]:SIGMA <- cov_GPL2( Dmat , etasq , rhosq , 0.01 ),
+        c(a,b,g) ~ dexp( 1 ),
+        etasq ~ dexp( 2 ),
+        rhosq ~ dexp( 0.5 )
+    ), data=dat_list , chains=4 , cores=4 , log_lik=TRUE)
+```
+
+
+```{r}
+dat <- list(
+    T = d$total_tools ,
+    P = scale(log(d$population)) ,
+    cid = ifelse( d$contact=="high" , 2 , 1 )
+)
+```
+
+
+```{r, results = "hide", cache = TRUE}
+# interaction model
+m14M4b <- ulam(
+    alist(
+        T ~ dpois( lambda ),
+        log(lambda) <- a[cid] + b[cid]*P,
+        a[cid] ~ dnorm( 3 , 0.5 ),
+        b[cid] ~ dnorm( 0 , 0.2 )
+    ), data=dat , chains=4 , cores = 4, log_lik=TRUE )
+```
+
+```{r}
+compare(m14M4a, m14M4b)
+```
+
+- According to WAIC, the model with the distance information fits the data better than without distance information.
+- The number of effective parameters is about 1.7 times higher if no distance information is used.
+
+## 14M5.
+
+Given: Primates data.
+
+Want: Model with group size as the outcome and brain size as a predictor. What is the effect of brain size on group size? How does phylogeny influence the estimate?
+
+Sol.:
+
+```{r}
+data(Primates301)
+data(Primates301_nex)
+d <- Primates301
+head(d)
+```
+
+```{r}
+d$name <- as.character(d$name)
+dstan <- d[ complete.cases( d$group_size , d$body , d$brain ) , ]
+spp_obs <- dstan$name
+
+dat_list <- list(
+    N_spp = nrow(dstan),
+    M = standardize(log(dstan$body)),
+    B = standardize(log(dstan$brain)),
+    G = standardize(log(dstan$group_size)),
+    Imat = diag(nrow(dstan)) )
+```
+
+
+```{r, results = "hide", cache = TRUE}
+m14M5a <- ulam(
+    alist(
+        G ~ multi_normal( mu , SIGMA ),
+        mu <- a + bM*M + bB*B,
+        matrix[N_spp,N_spp]: SIGMA <- Imat * sigma_sq,
+        a ~ normal( 0 , 1 ),
+        c(bM,bB) ~ normal( 0 , 0.5 ),
+        sigma_sq ~ exponential( 1 )
+    ), data=dat_list , chains=4 , cores=4 )
+```
+
+```{r}
+tree_trimmed <- keep.tip( Primates301_nex, spp_obs )
+Rbm <- corBrownian( phy=tree_trimmed )
+V <- vcv(Rbm)
+Dmat <- cophenetic( tree_trimmed )
+dat_list$V <- V[ spp_obs , spp_obs ]
+dat_list$R <- dat_list$V / max(V)
+dat_list$Dmat <- Dmat[ spp_obs , spp_obs ] / max(Dmat)
+```
+
+
+```{r, results = "hide", cache = TRUE}
+set.seed(1)
+m14M5b <- ulam(
+    alist(
+        G ~ multi_normal( mu , SIGMA ),
+        mu <- a + bM*M + bB*B,
+        matrix[N_spp,N_spp]: SIGMA <- cov_GPL1( Dmat , etasq , rhosq , 0.01 ),
+        a ~ normal(0,1),
+        c(bM,bB) ~ normal(0,0.5),
+        etasq ~ half_normal(1,0.25),
+        rhosq ~ half_normal(3,0.25)
+    ), data=dat_list , chains=4 , cores=4 )
+```
+
+
+```{r}
+plot( coeftab(m14M5a,m14M5b) , pars=c("bB","bM") )
+```
+
+-  According to the coefficient plot, brain size is strongly positive correlated with group size if the phylogenic distances are omitted. (m14M5a.bB)
+- On the other hand brain size is weakly positive correlated with group size if the phylogenic distances are considered. (m14M5b.bB)
+
+## 14H1.
+
+Given: Bangladesh contraception data.
+
+Want: Predict `use.contraception` with varying intercepts by `district_id` and varying slopes of `urban` by `district_id`. Plot mean (or meadian) varying effect estimates for intercepts and slopes, by district. Plot predicted proportion of woman using contraception. Interpret.
+
+```{r}
+data("bangladesh")
+d <- bangladesh
+
+summary(d)
+```
+
+```{r}
+dat <- list(
+    C = d$use.contraception,
+    did = as.integer(as.factor(d$district)),
+    uid = as.integer(as.factor(d$urban)),
+    urban = d$urban
+)
+summary(dat)
+```
+
+```{r, results = "hide", cache = TRUE}
+set.seed(867530)
+m14H1 <- ulam(
+    alist(
+        C ~ normal( mu , sigma ),
+        mu <- a_district[did] + b_district[did]*urban,
+        c(a_district,b_district)[did] ~ multi_normal( c(a,b) , Rho , sigma_district ),
+        a ~ normal(0,1),
+        b ~ normal(0,1),
+        sigma_district ~ exponential(1),
+        sigma ~ exponential(1),
+        Rho ~ lkj_corr(2)
+    ) , data=dat , chains=4 , cores=4 )
+```
+
+```{r}
+N_districts <- length(unique(dat$did))
+
+a1 <- sapply( 1:N_districts ,
+        function(i) mean(dat$C[dat$did==i & dat$urban==0]) )
+b1 <- sapply( 1:N_districts ,
+        function(i) mean(dat$C[dat$did==i & dat$urban==1]) ) - a1
+
+post <- extract.samples(m14H1)
+a2 <- apply( post$a_district , 2 , mean )
+b2 <- apply( post$b_district , 2 , mean )
+
+# plot both and connect with lines
+plot( a1 , b1 , xlab="intercept" , ylab="slope" ,
+    pch=16 , col=rangi2 , ylim=c( min(b1,na.rm = TRUE)-0.1 , max(b1, na.rm = TRUE)+0.1 ) ,
+    xlim=c( min(a1, na.rm=TRUE)-0.1 , max(a1, na.rm=TRUE)+0.1 ) )
+points( a2 , b2 , pch=1 )
+for ( i in 1:N_districts ) lines( c(a1[i],a2[i]) , c(b1[i],b2[i]) )
+
+# compute posterior mean bivariate Gaussian
+Mu_est <- c( mean(post$a) , mean(post$b) )
+rho_est <- mean( post$Rho[,1,2] )
+sa_est <- mean( post$sigma_district[,1] )
+sb_est <- mean( post$sigma_district[,2] )
+cov_ab <- sa_est*sb_est*rho_est
+Sigma_est <- matrix( c(sa_est^2,cov_ab,cov_ab,sb_est^2) , ncol=2 )
+
+# draw contours
+for ( l in c(0.1,0.3,0.5,0.8,0.99) )
+    lines(ellipse(Sigma_est,centre=Mu_est,level=l),
+        col=col.alpha("black",0.2))
+```
+
+```{r}
+# convert varying effects to waiting times
+C_rural_1 <- (a1)
+C_urban_1 <- (a1 + b1)
+C_rural_2 <- (a2)
+C_urban_2 <- (a2 + b2)
+
+# plot both and connect with lines
+plot( C_rural_1 , C_urban_1 , xlab="percentage of rural contraception usage" ,
+    ylab="percentage of  urban contraception usage" , pch=16 , col=rangi2 ,
+    ylim=c(0,1),xlim=c(0,1 ))
+points( C_rural_2 , C_urban_2 , pch=1 )
+for ( i in 1:N_districts )
+    lines( c(C_rural_1[i],C_rural_2[i]) ,
+    c(C_urban_1[i],C_urban_2[i]) )
+abline( a=0 , b=1 , lty=2 )
+
+# now shrinkage distribution by simulation
+v <- mvrnorm( 1e4 , Mu_est , Sigma_est )
+v[,2] <- v[,1] + v[,2]
+Sigma_est2 <- cov(v)
+Mu_est2 <- Mu_est
+Mu_est2[2] <- Mu_est[1]+Mu_est[2]
+
+# draw contours
+for ( l in c(0.1,0.3,0.5,0.8,0.99) )
+    lines(ellipse(Sigma_est2,centre=Mu_est2,level=l),
+        col=col.alpha("black",0.5))
+```
+
+```{r}
+# center
+Mu_est2
+```
+
+
+- Predition outside of the center/mean are heavily shrunk towards the mean. Using one mean and cov. for intercepts and slops is very restricting.
+- The predicted center is around 0.3, 0.5, meaning urban districts are predicted to use about 20 % more contraception then rural districts, as expected.
+
+## 14H2.
+
+Given: Oxford Boys Club data.
+
+Want: Fit a model with varying intercepts and slopes, predicting height, using age, clustered by `Subject`. Present and interpret the parameter estimates. Which varying effect contributes more variation to the heights, the intercept or the slope?
+
+Sol.:
+
+```{r}
+data("Oxboys")
+d <- Oxboys
+summary(d)
+```
+
+```{r}
+dat <- list(
+    H = d$height,
+    A = d$age,
+    sid = as.integer(d$Subject)
+)
+summary(dat)
+```
+
+```{r}
+#Sermon on priors
+#Height of a boy 150 cm +-30
+#Strong positive correlation between age and height, thus b=30 +- 10, Rho ~ lkj_corr(1)
+```
+
+
+```{r, results = "hide", cache = TRUE}
+set.seed(867530)
+m14H2 <- ulam(
+    alist(
+        H ~ normal( mu , sigma ),
+        mu <- a_subject[sid] + b_subject[sid]*A,
+        c(a_subject,b_subject)[sid] ~ multi_normal( c(a,b) , Rho , sigma_subject ),
+        a ~ normal(150,5),
+        b ~ normal(30,5),
+        c(sigma_subject,sigma) ~ exponential(1),
+        Rho ~ lkj_corr(1)
+    ) , data=dat , chains=4 , cores=4 )
+```
+
+```{r}
+pr <- precis(m14H2, depth = 3)
+pr[is.na(pr$Rhat4),]
+```
+
+```{r}
+pr[c("a","b"),]
+```
+
+- The standard deviation of the intercept is higher than the standard deviation on the slope, thus the intercept contributes more to the vatiation.
+
+## 14H3.
+
+Given: Oxford Boys Club data.
+
+Want: Explain correlation values between the varying intercepts and slops. How would this estimated correlation influence your predictions about a new sample of boys.
+
+Sol.:
+
+```{r}
+pr[c("Rho[1,2]"),]
+```
+
+```{r}
+post <- extract.samples(m14H2)
+a2 <- apply( post$a_subject , 2 , mean )
+b2 <- apply( post$b_subject , 2 , mean )
+plot(a2, b2, xlab="height", ylab="growth rate")
+```
+
+- Slope and intercept are positively correlated, thus boyes who are relatively tall are predicted to have a higher the growth rate.
+
+
+## 14H4.
+
+Given: 14H3.
+
+Want: Simulate new sample of 10 boys. Plot the predicted trends of height on age, one trend for each simulated boy you produce.
+
+Sol.:
+
+```{r}
+# compute posterior mean bivariate Gaussian
+Mu_est <- c( mean(post$a) , mean(post$b) )
+rho_est <- mean( post$Rho[,1,2] )
+sa_est <- mean( post$sigma_subject[,1] )
+sb_est <- mean( post$sigma_subject[,2] )
+cov_ab <- sa_est*sb_est*rho_est
+Sigma_est <- matrix( c(sa_est^2,cov_ab,cov_ab,sb_est^2) , ncol=2 )
+
+set.seed(1)
+N <- 10
+a_b.sim <- mvrnorm( N , Mu_est , Sigma_est )
+a.sim <- a_b.sim[,1]
+b.sim <- a_b.sim[,2]
+A_seq <- seq( from=-1 , to=1, length.out=30 )
+H.sim <- a.sim + b.sim%o%A_seq 
+
+plot(NULL, xlab="age", ylab="height" , xlim=c(-1,1), ylim=c(min(H.sim),max(H.sim)), type="n" )
+for (i in 1:10){
+  lines(A_seq, H.sim[i,])
+}
+```
+
+
+
+
