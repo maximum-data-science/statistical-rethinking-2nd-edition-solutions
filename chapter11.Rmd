@@ -7,9 +7,12 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-library(rethinking)
 ```
 
+```{r, message = FALSE, warning = FALSE}
+library(rethinking)
+library(MASS)
+```
 
 ## 11E1.
 
@@ -183,7 +186,6 @@ Given: Eagles data.
 Want: (a) Fit with ´ulam´ and ´quap´.
 
 ```{r}
-library(MASS)
 data(eagles)
 d <- eagles
 levels(d$P)

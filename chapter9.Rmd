@@ -7,7 +7,11 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message = FALSE, warning = FALSE}
 library(rethinking)
+library(MASS)
 ```
 
 ## 9E1.
@@ -325,7 +329,6 @@ Want: Compare models m5.1, m5.2, m5.3 with ´ulam´.
 Sol.:
 
 ```{r}
-library(rethinking)
 data(WaffleDivorce)
 d <- WaffleDivorce
 
