@@ -7,14 +7,15 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r, message = FALSE, warning = FALSE}
 library(rethinking)
 data(homeworkch3)
 ```
-
 ## 3E1.
 ```{r, echo=FALSE}
-library(rethinking)
-
 n <- 1000
 p_grid <- seq( from=0 , to=1 , length.out=n )
 prob_p <- rep( 1 , n )
