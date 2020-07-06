@@ -1,0 +1,557 @@
+---
+title: "Chapter 15"
+author: "jim108@gmx.net"
+date: "7/3/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message = FALSE, warning = FALSE}
+library(rethinking)
+library(gtools)
+```
+
+## 15E1.
+
+Given: Oceanic tools model:
+
+$T_i \sim Poisson(\mu_i)$
+
+$log\mu_i = \alpha + \beta log P_i$
+
+$\alpha \sim Normal(0, 1.5)$
+
+$\beta \sim Normal(0, 1)$.
+
+Want: Add measured error on the log population size of each society.
+
+Sol.:
+
+$P_{OBS,i} =$ "log population of island $i$", $P_{SE,i} =$ "log standard error of island $i$".
+
+$T_i \sim Poisson(\mu_i)$
+
+$log\mu_i = \alpha + \beta P_{TRUE,i}$
+
+$\alpha \sim Normal(0, 1.5)$
+
+$\beta \sim Normal(0, 1)$
+
+$P_{OBS,i} \sim Log-Normal(exp(P_{TRUE,i}), exp(P_{SE,i}))$
+
+$P_{TRUE,i} \sim Log-Normal(0, exp(4))$.
+
+
+## 15E2.
+
+Given: Oceanic tools model:
+
+$T_i \sim Poisson(\mu_i)$
+
+$log\mu_i = \alpha + \beta log P_i$
+
+$\alpha \sim Normal(0, 1.5)$
+
+$\beta \sim Normal(0, 1)$.
+
+Want: Add imputation of missing values for log population.
+
+Sol.:
+
+$P´_{i} =$ "log population of island $i$", $P´_{i} =$ "log standard error of island $i$".
+
+$T_i \sim Poisson(\mu_i)$
+
+$log\mu_i = \alpha + \beta P´_{i}$
+
+$\alpha \sim Normal(0, 1.5)$
+
+$\beta \sim Normal(0, 1)$
+
+$P´_{i} \sim Log-Normal(exp(0), exp(4))$.
+
+
+## 15M1.
+
+Given: Mathematical form of the imputation model in chapter.
+
+$K_i ∼ Normal(\mu_i , \sigma)$
+
+$\mu_i = \alpha + \beta_B B_i + \beta M log M_i$
+
+$B_i ∼ Normal(\nu, \sigma_B )$
+
+$\alpha \sim Normal(0, 0.5)$
+
+$\beta_B \sim Normal(0, 0.5)$
+
+$\beta_M \sim Normal(0, 0.5)$
+
+$\sigma \sim Exponential(1)$
+
+$\nu \sim Normal(0.5, 1)$
+
+$\sigma_B \sim Exponential(1)$.
+
+Want: What is being assumed about how missing values were generated?
+
+- The missing brain sizes are normal distributed with a expected value $\nu$, which is choosen from $\nu \sim Normal(0.5, 1)$ and a standard deviation, which is choosen from $\sigma_B \sim Exponential(1)$.
+
+
+## 15M2.
+
+Given: Primate milk data and model with missing cases.
+
+Want: Model with imputed cases. Compare WAIC values.
+
+Sol.:
+
+```{r}
+data(milk)
+d <- milk
+d$neocortex.prop <- d$neocortex.perc / 100
+d$logmass <- log(d$mass)
+nrow(d)
+```
+
+```{r}
+dcc <- d[complete.cases(d),]
+nrow(dcc)
+```
+
+```{r}
+dat_listcc <- list(
+    K = standardize( dcc$kcal.per.g ),
+    B = standardize( dcc$neocortex.prop ),
+    M = standardize( dcc$logmass ) )
+```
+
+```{r, results = "hide", cache = TRUE}
+set.seed(1)
+m15M2a <- ulam(
+    alist(
+        K ~ dnorm( mu , sigma ),
+        mu <- a + bB*B + bM*M,
+        c(a) ~ dnorm( 0 , 0.5 ),
+        c(bB,bM) ~ dnorm( 0, 0.5 ),
+        sigma ~ dexp( 1 )
+    ) , data=dat_listcc , chains=4 , cores=4, log_lik = TRUE )
+```
+
+```{r}
+dat_list <- list(
+    K = standardize( d$kcal.per.g ),
+    B = standardize( d$neocortex.prop ),
+    M = standardize( d$logmass ) )
+```
+
+```{r, results = "hide", cache = TRUE}
+m15M2b <- ulam(
+    alist(
+        K ~ dnorm( mu , sigma ),
+        mu <- a + bB*B + bM*M,
+        B ~ dnorm( nu , sigma_B ),
+        c(a,nu) ~ dnorm( 0 , 0.5 ),
+        c(bB,bM) ~ dnorm( 0, 0.5 ),
+        sigma_B ~ dexp( 1 ),
+        sigma ~ dexp( 1 )
+    ) , data=dat_list , chains=4 , cores=4, log_lik = TRUE )
+```
+
+
+```{r}
+coeftab(m15M2a, m15M2b)
+```
+
+```{r}
+compare(m15M2a, m15M2b)
+```
+
+- According to WAIC, the model with imputed values predicts new values much worse.
+
+
+## 15M3.
+
+Given: Divorce data measurement error model.
+
+Want: Double the standard errors. Explain impact on inference.
+
+Sol.:
+
+
+```{r}
+data(WaffleDivorce)
+d <- WaffleDivorce
+```
+
+
+```{r}
+dlista <- list(
+    D_obs = standardize( d$Divorce ),
+    D_sd = d$Divorce.SE / sd( d$Divorce ),
+    M = standardize( d$Marriage ),
+    A = standardize( d$MedianAgeMarriage ),
+    N = nrow(d)
+)
+dlistb <- list(
+    D_obs = standardize( d$Divorce ),
+    D_sd = 2*d$Divorce.SE / sd( d$Divorce ),
+    M = standardize( d$Marriage ),
+    A = standardize( d$MedianAgeMarriage ),
+    N = nrow(d)
+)
+```
+
+```{r}
+l15M3 <- alist(
+        D_obs ~ dnorm( D_true , D_sd ),
+        vector[N]:D_true ~ dnorm( mu , sigma ),
+        mu <- a + bA*A + bM*M,
+        a ~ dnorm(0,0.2),
+        bA ~ dnorm(0,0.5),
+        bM ~ dnorm(0,0.5),
+        sigma ~ dexp(1)
+    )
+```
+
+```{r, results = "hide", cache = TRUE}
+set.seed(1)
+m15M3a <- ulam(l15M3, data=dlista , chains=4 , cores=4, iter=1e4 )
+```
+
+```{r, results = "hide", cache = TRUE}
+set.seed(1)
+m15M3b <- ulam(l15M3, data=dlistb , chains=4 , cores=4, iter=1e4 )
+```
+
+```{r}
+precis(m15M3b)
+```
+
+```{r}
+precis(m15M3a)
+```
+
+
+```{r}
+precis(m15M3b)
+```
+
+- The number of effective samples is a lot worse, making the result with double the standard error not trustworthy.
+- The model with double the standard error infers a slight influence of marriage rate on divorce, but with an equally high standard error.
+
+
+## 15H1.
+
+Given: Elefant data.
+
+Want: (a) Fit Poisson model predictiong `MATINGS` with `AGE` as a predictor. (b) Fit Poisson model predictiong `MATINGS` with `AGE` as a predictor with a standard error of +- 5 years. Compare.
+
+Sol.:
+
+```{r}
+data("elephants")
+d <- elephants
+summary(d)
+```
+
+
+```{r}
+dat <- list(
+    M = d$MATINGS,
+    A = standardize(d$AGE))
+
+plot(dat$M~dat$A)
+```
+
+
+```{r, results = "hide", cache = TRUE}
+set.seed(1)
+m15H1a <- ulam(
+    alist(
+        M ~ dpois( lambda ),
+        log(lambda) <- a + b*A,
+        a ~ dnorm(log(3)  , 0.1 ),
+        b ~ dnorm(log(2)  , 0.1 )
+    ), data=dat , chains=4 , cores=4, log_lik=TRUE )
+```
+
+
+```{r, results = "hide", cache = TRUE}
+#Sermon on priors.
+#Expected: 
+#A=0: M=3 or pop. shrinks, thus a:=log(3) 
+#A=1: M=6, thus b:=log(2) 
+#=> A=-1: log(3) - log(2) = log(3/2) = 0.4
+
+set.seed(1)
+m15H1a.prior <- extract.prior( m15H1a)
+```
+
+
+```{r, results = "hide", cache = TRUE}
+mu <- link( m15H1a , post=m15H1a.prior , data=list( A=c(-2,2) ) )
+plot( NULL , xlim=c(-2,2) , ylim=c(0,10), xlab="Age", ylab="Matings" )
+for ( i in 1:50 ) lines( c(-2,2) , mu[i,] , col=col.alpha("black",0.4) )
+mtext("prior lines")
+```
+
+```{r, results = "hide", cache = TRUE}
+A_seq <- seq( from=min(dat$A)-0.1 , to=max(dat$A)+0.1 , length.out=30 )
+mu <- link( m15H1a , data=list(A=A_seq) )
+mu.mean <- apply( mu , 2, mean )
+mu.PI <- apply( mu , 2 , PI )
+
+# plot it all
+plot( M ~ A , data=dat , col=rangi2 )
+lines( A_seq , mu.mean , lwd=2 )
+shade( mu.PI , A_seq )
+mtext("posterior distribution")
+```
+
+```{r}
+dat <- list(
+    M = d$MATINGS,
+    A_obs = standardize(d$AGE),
+    A_sd = rep(5/sd(d$AGE),nrow(d)),
+    N = nrow(d))
+
+plot(dat$M~dat$A_obs)
+
+for ( i in 1:nrow(d) ) {
+    ci <- dat$A_obs[i] + c(-1,1)*dat$A_sd[i]
+    x <- dat$M[i]
+    lines( ci, c(x,x) )
+}
+```
+
+
+```{r, results = "hide", cache = TRUE}
+set.seed(1)
+m15H1b <- ulam(
+    alist(
+        M ~ dpois( lambda ),
+        log(lambda) <- a + b*A_true[i],
+        A_obs ~ dnorm( A_true , A_sd ),
+        vector[N]:A_true ~ dnorm( 0 , 1 ),
+        a ~ dnorm(log(3)  , 0.1 ),
+        b ~ dnorm(log(2)  , 0.1 )
+    ), data=dat , chains=4 , cores=4, log_lik=TRUE )
+```
+
+```{r, results = "hide", cache = TRUE}
+A_seq <- seq( from=min(dat$A_obs)-0.1 , to=max(dat$A_obs)+0.1 , length.out=30 )
+mu <- link( m15H1b , data=list(A_obs=A_seq) )
+mu.mean <- apply( mu , 2, mean )
+mu.PI <- apply( mu , 2 , PI )
+
+# plot it all
+plot( M ~ A_obs , data=dat , col=rangi2 )
+lines( A_seq , mu.mean , lwd=2 )
+shade( mu.PI , A_seq )
+mtext("posterior distribution")
+```
+
+```{r}
+precis(m15H1a)
+precis(m15H1b)
+```
+
+
+- The models predict differend mean functions. Although the intercepts are the same, the model with noise has a slightly higher slope.
+- According to the plot, the model without noise is a smooth accending curve.
+- According to the plot, the model with noise predicted mean function is not smooth and only slightly assending.
+
+## 15H2.
+
+Given: 15H1.
+
+Want: Increase standard error until the slope reaches zero.
+
+Sol.:
+
+```{r}
+dat <- list(
+    M = d$MATINGS,
+    A_obs = standardize(d$AGE),
+    A_sd = rep(4,nrow(d)),
+    N = nrow(d))
+
+plot(dat$M~dat$A_obs)
+
+for ( i in 1:nrow(d) ) {
+    ci <- dat$A_obs[i] + c(-1,1)*dat$A_sd[i]
+    x <- dat$M[i]
+    lines( ci, c(x,x) )
+}
+```
+
+```{r, results = "hide", cache = TRUE}
+set.seed(1)
+m15H1c <- ulam(
+    alist(
+        M ~ dpois( lambda ),
+        log(lambda) <- a + b*A_true[i],
+        A_obs ~ dnorm( A_true , A_sd ),
+        vector[N]:A_true ~ dnorm( 0 , 1 ),
+        a ~ dnorm(log(3)  , 0.1 ),
+        b ~ dnorm(log(2)  , 0.1 )
+    ), data=dat , chains=4 , cores=4, log_lik=TRUE )
+```
+
+```{r, results = "hide", cache = TRUE}
+A_seq <- seq( from=min(dat$A_obs)-0.1 , to=max(dat$A_obs)+0.1 , length.out=30 )
+mu <- link( m15H1c , data=list(A_obs=A_seq) )
+mu.mean <- apply( mu , 2, mean )
+mu.PI <- apply( mu , 2 , PI )
+
+# plot it all
+plot( M ~ A_obs , data=dat , col=rangi2 )
+lines( A_seq , mu.mean , lwd=2 )
+shade( mu.PI , A_seq )
+mtext("posterior distribution")
+```
+
+```{r}
+precis(m15H1c)
+```
+
+- Even a standard deviation of 4 does not reduce the slope.
+- The model without noise has the lowest slope.
+
+## 15H3.
+
+Given:
+
+```{r}
+set.seed(100)
+x <- c( rnorm(10) , NA )
+y <- c( rnorm(10,x) , 100 )
+d <- data.frame(x,y)
+```
+
+Want: (a) Regression on `x` with only the complete cases. (b) Regression on `x` with imputed values. Use model:
+
+$y_i \sim Normal(\mu_i,\sigma)$
+
+$\mu_i = \alpha + \beta x_i$
+
+$x_i \sim Normal(0,1)$
+
+$\alpha,\beta \sim Normal(0,100)$
+
+$\sigma \sim HalfCauchy(0,1)$
+
+Sol.:
+
+```{r}
+plot(y~x)
+```
+
+```{r}
+dcc <- d[complete.cases(d),]
+```
+
+
+```{r, results = "hide", cache = TRUE}
+set.seed(1)
+m15H3a <- ulam(
+    alist(
+        y ~ dnorm( mu, sigma ),
+        mu <- a + b*x,
+        c(a,b) ~ dnorm(0, 100),
+        sigma ~ dhalfcauchy(0,1)
+    ), data=dcc , chains=4 , cores=4)
+```
+
+```{r}
+precis(m15H3a)
+```
+
+```{r, results = "hide", cache = TRUE}
+x_seq <- seq( from=min(dcc$x)-0.1 , to=max(dcc$x)+0.1 , 
+              length.out=30 )
+mu <- link( m15H3a , data=list(x=x_seq) )
+mu.mean <- apply( mu , 2, mean )
+mu.PI <- apply( mu , 2 , PI )
+
+# plot it all
+plot( y ~ x , data=dcc , col=rangi2 )
+lines( A_seq , mu.mean , lwd=2 )
+shade( mu.PI , A_seq )
+mtext("posterior distribution")
+```
+
+```{r, results = "hide", cache = TRUE}
+set.seed(1)
+m15H3b <- ulam(
+    alist(
+        y ~ dnorm( mu, sigma ),
+        mu <- a + b*x,
+        x ~ dnorm(0,1),
+        c(a,b) ~ dnorm(0, 100),
+        sigma ~ dhalfcauchy(0,1)
+    ), data=d , chains=4 , cores=4, iter=1e4)
+```
+
+```{r}
+traceplot(m15H3b)
+```
+
+
+```{r}
+precis(m15H3b, depth = 2)
+```
+
+```{r, results = "hide", cache = TRUE}
+x_seq <- seq( from=min(d$x,na.rm = T)-0.1 , to=max(d$x,na.rm = T)+0.1 , 
+              length.out=30 )
+#mu <- link( m15H3b , data=list(x=x_seq) )
+#Error in merge_missing(x_missidx, to_vector(x), x_impute) : could not find function "merge_missing"
+#https://github.com/rmcelreath/rethinking/issues/193
+```
+
+- Because of a bug the `m15H3b` could not be plotted.
+- The last y value (100) is very high in comparison to the other values. If it is used by imputing the x value it changes the prediction.
+
+## 15H4.
+
+Given: Eight-sided spinner.
+
+```{r}
+values <- 1:8
+frequencies <- c(18,19,22, NA, NA, 19, 20, 22)
+d <- data.frame(values, frequencies)
+```
+
+- None of the values is twice as likely as any other.
+
+Want: Is the spinner fair. Use a Dirichlet distribution to capture this prior belief. Plot the joint posterior distribution of 4s and 5s.
+
+Sol.:
+
+```{r}
+plot(frequencies~values)
+```
+
+```{r}
+N_obs <- sum(d$frequencies, na.rm = T)
+N_values <- length(d$values)
+N_obs_fair <- 20 * 8
+```
+
+```{r}
+set.seed(1)
+prior <- rdirichlet( 1 , alpha=rep(2,N_values) )
+samples <- sample(N_values,N_obs_fair,replace=T,prob=prior)
+hist(samples)
+```
+
+
+
+
+
+
