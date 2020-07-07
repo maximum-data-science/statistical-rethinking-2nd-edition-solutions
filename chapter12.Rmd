@@ -520,8 +520,8 @@ precis(m12H6a.prior)
 ```
 
 ```{r}
-mean( inv_logit( m12H6a.prior$ap ) ) # probability fish
-mean( exp( m12H6a.prior$al ) )       # rate fishing per hour, when fishing
+mean( inv_logit( m12H6a.prior$ap ) ) 
+mean( exp( m12H6a.prior$al ) )      
 ```
 
 ```{r}
