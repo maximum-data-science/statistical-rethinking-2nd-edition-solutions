@@ -1,0 +1,507 @@
+---
+title: "Chapter 16"
+author: "jim108@gmx.net"
+date: "7/6/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message = FALSE, warning = FALSE}
+library(rethinking)
+```
+
+## 16E1.
+
+Given: Cylinder height model `m16.1`.
+
+Want: Model with height as a free parameter. Is 3 predicted? Plot. Compare.
+
+Sol.:
+
+```{r}
+data(Howell1)
+d <- Howell1
+
+# scale observed variables
+d$w <- d$weight / mean(d$weight)
+d$h <- d$height / mean(d$height)
+```
+
+
+```{r, results = "hide", cache = TRUE}
+set.seed(1)
+m16M1a <- ulam(
+    alist(
+        w ~ dlnorm( mu , sigma ),
+        exp(mu) <- 3.141593 * k * p^2 * h^3,
+        p ~ beta( 2 , 18 ),
+        k ~ exponential( 0.5 ),
+        sigma ~ exponential( 1 )
+    ), data=d , chains=4 , cores=4 )
+```
+
+```{r, results = "hide", cache = TRUE}
+set.seed(1)
+m16M1b <- ulam(
+    alist(
+        w ~ dlnorm( mu , sigma ),
+        exp(mu) <- 3.141593 * k * p^2 * h^e,
+        p ~ beta( 2 , 18 ),
+        k ~ exponential( 0.5 ),
+        sigma ~ exponential( 1 ),
+        e ~ dnorm(3,0.1)
+    ), data=d , chains=4 , cores=4 )
+```
+
+```{r}
+plot_height <- function(model){
+  h_seq <- seq( from=0 , to=max(d$h) , length.out=30 )
+  w_sim <- sim( model , data=list(h=h_seq) )
+  mu_mean <- apply( w_sim , 2 , mean )
+  w_CI <- apply( w_sim , 2 , PI )
+  plot( d$h , d$w , xlim=c(0,max(d$h)) , ylim=c(0,max(d$w)) , col=rangi2 ,
+      lwd=2 , xlab="height (scaled)" , ylab="weight (scaled)" )
+  lines( h_seq , mu_mean )
+  shade( w_CI , h_seq )
+}
+plot_height(m16M1a)
+```
+```{r}
+plot_height(m16M1b)
+```
+
+```{r}
+precis(m16M1b)
+```
+
+- The new model suggests a height exponent of about 2.4 instead of 3 with a low standard deviation.
+- According to the plot the 95% interval is thighter and more data points are excluded.
+
+## 16M2.
+
+Given: 16M1.
+
+Want: Are the priors for `m16M1a` reasonable? Suggestions.
+
+Sol.:
+
+
+
+```{r, results = "hide", cache = TRUE}
+set.seed(1)
+m16M2a <- ulam(
+    alist(
+        w ~ dlnorm( mu , sigma ),
+        exp(mu) <- 3.141593 * k * p^2 * h^3,
+        p ~ beta( 2 , 18 ),
+        k ~ exponential( 0.5 ),
+        sigma ~ exponential( 1 )
+    ), data=d , chains=4 , cores=4 )
+```
+
+```{r, message = FALSE, warning = FALSE}
+plot_prior <- function(model){
+  set.seed(1)
+  prior <- extract.prior(model)
+  h_seq <- seq( from=0 , to=max(d$h) , length.out=30 )
+  mu <- link( model , post=prior, data=list(h=h_seq) )
+  plot( NULL , xlim=c(0,max(d$h)) , ylim=c(-10,10), xlab="height", ylab="weight" )
+  for ( i in 1:50 ) lines( h_seq , mu[i,] , col=col.alpha("black",0.4) )
+  mtext("prior values")
+}
+
+plot_prior(m16M2a)
+```
+
+```{r, results = "hide", cache = TRUE}
+set.seed(1)
+m16M2b <- ulam(
+    alist(
+        w ~ dlnorm( mu , sigma ),
+        exp(mu) <- 3.141593 * k * p^2 * h^3,
+        p ~ beta( 10 , 10 ),
+        k ~ exponential( 0.5 ),
+        sigma ~ exponential( 1 )
+    ), data=d , chains=4 , cores=4 )
+```
+
+```{r, message = FALSE, warning = FALSE}
+plot_prior(m16M2b)
+```
+
+## 16H1.
+
+Given: Panda nuts data. Prior to seeing the data, males are on average larger than females.
+
+Want: Split by sex.
+
+Sol.:
+
+```{r}
+data(Panda_nuts)
+d <- Panda_nuts
+head(d)
+```
+
+```{r}
+dat_list <- list(
+    n = as.integer( Panda_nuts$nuts_opened ),
+    age = Panda_nuts$age / max(Panda_nuts$age),
+    seconds = Panda_nuts$seconds, 
+    sex = as.integer(as.factor(d$sex)) 
+    )
+```
+
+
+```{r, results = "hide", cache = TRUE}
+set.seed(1)
+m16H1 <- ulam(
+    alist(
+        n ~ poisson( lambda ),
+        lambda|sex==1 <- seconds*phi_f*(1-exp(-k*age))^theta,
+        lambda|sex==2 <- seconds*phi_m*(1-exp(-k*age))^theta,
+        phi_f ~ lognormal( log(1) , 0.1 ),
+        phi_m ~ lognormal( log(2) , 0.1 ),
+        k ~ lognormal( log(2) , 0.25 ),
+        theta ~ lognormal( log(5) , 0.25 )
+    ), data=dat_list , chains=4, cores = 4 )
+```
+
+
+
+```{r}
+precis(m16H1)
+```
+
+```{r}
+post <- extract.samples(m16H1)
+plot( NULL , xlim=c(0,1) , ylim=c(0,1.5) , xlab="age" ,
+    ylab="nuts per second" , xaxt="n" )
+at <- c(0,0.25,0.5,0.75,1,1.25,1.5)
+axis( 1 , at=at , labels=round(at*max(Panda_nuts$age)) )
+
+# raw data
+pts <- dat_list$n / dat_list$seconds
+point_size <- normalize( dat_list$seconds )
+points( jitter(dat_list$age) , pts , col=rangi2 , lwd=2 , cex=point_size*3 )
+
+# 30 posterior curves
+for ( i in 1:30 ) with( post ,
+    curve( phi_m[i]*(1-exp(-k[i]*x))^theta[i] , add=TRUE , col=grau() ) )
+
+# 30 posterior curves
+for ( i in 1:30 ) with( post ,
+    curve( phi_f[i]*(1-exp(-k[i]*x))^theta[i] , add=TRUE , col=2 ) )
+```
+
+## 16H2.
+
+Given: Panda nuts data.
+
+Want: Vary one parameter by individual, and use partial pooling to avoid overfitting.
+
+Sol.:
+
+```{r}
+dat_list <- list(
+    n = as.integer( Panda_nuts$nuts_opened ),
+    age = Panda_nuts$age / max(Panda_nuts$age),
+    seconds = Panda_nuts$seconds, 
+    chimpanzee = as.integer(as.factor(d$chimpanzee)) 
+    )
+```
+
+
+```{r, results = "hide", cache = TRUE}
+set.seed(1)
+m16H2a <- ulam(
+    alist(
+        n ~ poisson( lambda ),
+        lambda <- seconds*phi*(1-exp(-k*age))^theta,
+        phi ~ lognormal( log(1) , 0.1 ),
+        k ~ lognormal( log(2) , 0.25 ),
+        theta ~ lognormal( log(5) , 0.25 )
+    ), data=dat_list , chains=4, cores = 4 )
+```
+
+```{r, results = "hide", cache = TRUE}
+set.seed(1)
+m16H2b <- ulam(
+    alist(
+        n ~ poisson( lambda ),
+        lambda <- seconds*phi[chimpanzee]*(1-exp(-k*age))^theta,
+        phi[chimpanzee] ~ lognormal( mu_phi , sigma_phi ),
+        mu_phi ~ normal(1, 0.1),
+        sigma_phi ~ exponential(10),
+        k ~ lognormal( log(2) , 0.25 ),
+        theta ~ lognormal( log(5) , 0.25 )
+    ), data=dat_list , chains=4, cores = 4 )
+```
+```{r}
+precis(m16H2b)
+```
+
+```{r}
+post <- extract.samples(m16H2a)
+plot( NULL , xlim=c(0,1) , ylim=c(0,1.5) , xlab="age" ,
+    ylab="nuts per second" , xaxt="n" )
+at <- c(0,0.25,0.5,0.75,1,1.25,1.5)
+axis( 1 , at=at , labels=round(at*max(Panda_nuts$age)) )
+
+# raw data
+pts <- dat_list$n / dat_list$seconds
+point_size <- normalize( dat_list$seconds )
+points( jitter(dat_list$age) , pts , col=rangi2 , lwd=2 , cex=point_size*3 )
+
+age_seq <- seq( from=min(dat_list$age)-0.1 , to=max(dat_list$age)+1 , length.out=30 )
+phi.mean <- mean(post$phi)
+k.mean <- mean(post$k)
+theta.mean <- mean(post$theta)
+nuts.mean <- phi.mean*(1-exp(-k.mean*age_seq))^theta.mean
+lines(age_seq,nuts.mean )
+
+phi.PI <- PI(post$phi)
+k.PI <- PI(post$k)
+theta.PI <- PI(post$theta)
+nuts.PI_lower <- phi.PI[1]*(1-exp(-k.PI[1]*age_seq))^theta.PI[1]
+nuts.PI_upper <- phi.PI[2]*(1-exp(-k.PI[2]*age_seq))^theta.PI[2]
+lines(age_seq,nuts.PI_lower, lty=2)
+lines(age_seq, nuts.PI_upper, lty=2)
+```
+
+
+```{r}
+plotted_chimpanzees <- c(9,8,7,6,5)
+
+# raw data
+pts <- dat_list$n / dat_list$seconds
+point_size <- normalize( dat_list$seconds )
+age <- jitter(dat_list$age)
+chimpanzee <- dat_list$chimpanzee
+
+post <- extract.samples(m16H2b)
+
+phi.mat <- matrix(post$phi, nrow = 2000, ncol= 22)
+k.mat <- matrix(post$k, nrow = 2000, ncol= 22)
+theta.mat <- matrix(post$theta, nrow = 2000, ncol= 22)
+
+
+plot( NULL , xlim=c(0,1) , ylim=c(0,1.5) , xlab="age" ,
+    ylab="nuts per second" , xaxt="n" )
+at <- c(0,0.25,0.5,0.75,1,1.25,1.5)
+axis( 1 , at=at , labels=round(at*max(Panda_nuts$age)) )
+
+dplot <- data.frame(pts, point_size, age, chimpanzee)
+dplot <- dplot[with(dplot, order(chimpanzee, age)),]
+
+col <- 1
+for (i in plotted_chimpanzees){
+  dplot_chimp <- dplot[dplot$chimpanzee==i,]
+  lines(dplot_chimp$age , dplot_chimp$pts , col=col , lwd=2 , cex=dplot_chimp$point_size*3, type="b" )
+  
+  phi.mean <- mean(phi.mat[,i])
+  k.mean <- mean(k.mat[,i])
+  theta.mean <- mean(theta.mat[,i])
+  nuts.fct <- function(age) phi.mean*(1-exp(-k.mean*age))^theta.mean
+  nuts.mean <- nuts.fct(age_seq)
+  lines(age_seq,nuts.mean, col=col )
+  x <- i*0.07
+  text(x,nuts.fct(x), labels=i, col=col)
+  
+  col <- col + 1
+}
+```
+
+## 16H3.
+
+Given: Lynx/hare data.
+
+Want: Compare ODE model in chapter to generic lag time series.
+
+Sol.:
+
+
+```{r}
+data(Lynx_Hare)
+d <- Lynx_Hare
+str(d)
+```
+
+```{r}
+dat_ar1 <- list(
+    L = d$Lynx[2:21],
+    L_lag1 = d$Lynx[1:20],
+    H = d$Hare[2:21],
+    H_lag1 = d$Hare[1:20] )
+```
+
+```{r, results = "hide", cache = TRUE}
+set.seed(1)
+m16H3a <- ulam(
+    alist(
+        #Lynx
+        L ~ lognormal( log(mu_L), sigma ),
+        mu_L <- a + b_LL*L_lag1 + b_LH*H_lag1,
+        #Hare
+        H ~ lognormal( log(mu_H), sigma ),
+        mu_H <- a + b_HH*H_lag1 + b_HL*L_lag1,
+        #priors
+        c(a,b_LL, b_LH, b_HH, b_HL) ~ normal(0, 0.1),
+        sigma ~ exponential(1)
+    ), data=dat_ar1 , chains=4, cores=4 )
+```
+
+```{r}
+set.seed(1)
+m16H3a.link <- link(m16H3a)
+```
+
+```{r}
+plot_predictions <- function(mu_L, mu_H, years){
+  L_mean <- apply(mu_L, 2, mean)
+  H_mean <- apply(mu_H, 2, mean)
+  L_int <- apply(mu_L, 2, PI)
+  H_int <- apply(mu_H, 2, PI)
+  
+  plot( 1:21 , d$Lynx , pch=16 , ylim=c(0,120) , xlab="year" ,
+    ylab="thousands of pelts" , xaxt="n", col=1 )
+  at <- c(1,11,21)
+  axis( 1 , at=at , labels=d$Year[at] )
+  points( 1:21 , d$Hare , col=2 , pch=16 )
+ 
+  lines( years , L_mean  , lwd=2, col=1 )
+  lines( years , H_mean  , lwd=2, col=2 )
+  shade(L_int,years)
+  shade(H_int,years)
+  
+  legend("topleft", legend=c("Lynx dat", "Lynx pred.", "Hare dat","Hare pred."), col=c(1,1, 2,2), lty=c(NA,1,NA,1), pch=c(19,NA,19,NA))
+}
+plot_predictions(m16H3a.link$mu_L, m16H3a.link$mu_H, 2:21)
+```
+
+```{r, results = "hide", cache = TRUE}
+dat_list <- list(
+    N = nrow(d),
+    pelts = d[,2:3] )
+
+data(Lynx_Hare_model)
+m16H3b <- stan( model_code=Lynx_Hare_model , data=dat_list , chains=4 ,
+    cores=4 , control=list( adapt_delta=0.95 ) )
+```
+
+
+```{r}
+set.seed(1)
+post <- extract.samples(m16H3b)
+str(post)
+```
+
+```{r}
+plot_predictions(post$pelts_pred[,,1], post$pelts_pred[,,2], 1:21)
+```
+```{r}
+plot_predictions(m16H3a.link$mu_L, m16H3a.link$mu_H, 2:21)
+```
+
+
+- The prediction by the lag time series model fits poorly. The peeks are generally to low.
+- Lag time series model/using only the last data points is too simple for this kind of dynamic.
+
+## 16H4.
+
+Given: 16H3.
+
+Want: Fit autoregressive model with two-step lag variable.
+
+Sol.:
+
+```{r}
+dat_ar2 <- list(
+    L = d$Lynx[3:21],
+    L_lag1 = d$Lynx[2:20],
+    L_lag2 = d$Lynx[1:19],
+    H = d$Hare[3:21],
+    H_lag1 = d$Hare[2:20],
+    H_lag2 = d$Lynx[1:19])
+```
+
+```{r, results = "hide", cache = TRUE}
+set.seed(1)
+m16H4 <- ulam(
+    alist(
+        #Lynx
+        L ~ lognormal( log(mu_L), sigma ),
+        mu_L <- a + b_LL*L_lag1 + b_LH*H_lag1 + b_LL2*L_lag2 + b_LH2*H_lag2,
+        #Hare
+        H ~ lognormal( log(mu_H), sigma ),
+        mu_H <- a + b_HH*H_lag1 + b_HL*L_lag1 + b_HH2*H_lag2 + b_HL2*L_lag2,
+        #priors
+        c(a,b_LL, b_LH, b_HH, b_HL,b_LL2, b_LH2, b_HH2, b_HL2) ~ normal(0, 0.1),
+        sigma ~ exponential(1)
+    ), data=dat_ar2 , chains=4, cores=4 )
+```
+
+```{r}
+set.seed(1)
+m16H4.link <- link(m16H4)
+plot_predictions(m16H4.link$mu_L, m16H4.link$mu_H, 3:21)
+```
+
+- It has not improved.
+
+## 16H5.
+
+Given: Mites data.
+
+Want: Model with Lotka-Volterra ODE. (Modify `Lynx_Hare_model`)
+
+Sol.:
+
+```{r}
+data("Mites")
+d <- Mites
+summary(d)
+```
+
+```{r, results = "hide", cache = TRUE}
+dat_list <- list(
+    N = nrow(d),
+    pelts = d[,2:3] )
+
+m16H5 <- stan( model_code=Lynx_Hare_model , data=dat_list , chains=4 ,
+    cores=4 , control=list( adapt_delta=0.95 ) )
+```
+
+```{r}
+set.seed(1)
+post <- extract.samples(m16H5)
+str(post)
+```
+
+```{r}
+plot_predictions <- function(mu_L, mu_H, days){
+  L_mean <- apply(mu_L, 2, mean)
+  H_mean <- apply(mu_H, 2, mean)
+  L_int <- apply(mu_L, 2, PI)
+  H_int <- apply(mu_H, 2, PI)
+  
+  plot( days , d$predator , pch=16 , ylim=c(0, 2500), xlab="day" ,
+    ylab="thousands of pelts" , xaxt="n", col=1 )
+  at <- c(1,11,21,35)
+  axis( 1 , at=at , labels=d$day[at] )
+  points( days , d$prey , col=2 , pch=16 )
+ 
+  lines( days , L_mean  , lwd=2, col=1 )
+  lines( days , H_mean  , lwd=2, col=2 )
+  shade(L_int,days)
+  shade(H_int,days)
+  
+  legend("topleft", legend=c("Pred dat", "Pred pred.", "Prey dat","Prey pred."), col=c(1,1, 2,2), lty=c(NA,1,NA,1), pch=c(19,NA,19,NA))
+}
+plot_predictions(post$pelts_pred[,,1], post$pelts_pred[,,2], 1:nrow(d))
+```
+
+- TODO
