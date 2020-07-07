@@ -17,5 +17,5 @@ Personal solutions to exercises from the book Statistical Rethinking 2nd edition
 - [Chapter 16](chapter16.html)
 
 TODO
-- [Chapter 6](chapter6.html) 6H2: Want: (b) Does "D _||_ S | A, M, W" hold?
-- [Chapter 16](chapter16.html) 16H5:  Fit model with Lotka-Volterra ODE. (Modify `Lynx_Hare_model`)
+- [Chapter 6](chapter6.html)6H2: Want: (b) Does `D _||_ S | A, M, W` hold?
+- [Chapter 16](chapter16.html)16H5: Fit model with Lotka-Volterra ODE. (Modify `Lynx_Hare_model`)
