@@ -1,0 +1,212 @@
+---
+title: "Chapter 6"
+author: "jim108@gmx.net"
+date: "5/21/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message = FALSE, warning = FALSE}
+library(rethinking)
+library(dagitty)
+```
+
+## 6H1.
+
+Given:
+
+```{r}
+dag6M1 <- dagitty( "dag {
+    U [unobserved]
+    X -> Y
+    X <- U <- A -> C -> Y
+    U -> B <- C <- V -> Y
+}")
+coordinates( dag6M1 ) <- list( x=c(A=1,U=0,B=1,C=2,V=3,X=0,Y=2) ,
+                               y=c(A=0.5,U=1,B=1.5,C=1,V=1,X=2,Y=2) )
+drawdag( dag6M1 )
+```
+
+Want: How many paths connect X to Y? Which must be closed? Which variables should you condition on?
+
+Sol.:
+
+```{r}
+paths( dag6M1, from="X", to="Y")
+adjustmentSets( dag6M1 , exposure="X" , outcome="Y" )
+```
+
+## 6H1.
+
+Given: WaffleDivorce data.
+
+Want: DAG, influence waffle houses on divorce rate.
+
+Sol.:
+
+```{r}
+library(dagitty)
+dag_wd <- dagitty( "dag {
+    A -> D
+    A -> M -> D
+    A <- S -> M
+    S -> W -> D
+}")
+coordinates(dag_wd) <- list( x=c(S=0,W=2,M=1,A=0,D=2) , 
+                             y=c(S=0,W=0,M=1,A=2,D=2) )
+drawdag( dag_wd )
+```
+
+```{r}
+data("WaffleDivorce")
+
+d <- WaffleDivorce
+head(d)
+```
+
+```{r}
+d$D <- standardize( d$Divorce )
+d$M <- standardize( d$Marriage )
+d$A <- standardize( d$MedianAgeMarriage )
+d$W <- standardize( d$WaffleHouses )
+```
+
+```{r}
+mH1 <- quap(
+    alist(
+        D ~ dnorm( mu , sigma ) ,
+        mu <- a[South] + bA*A + bM*M + bW*W,
+        a[South] ~ dnorm( 0, 0.5),
+        bA[South] ~ dnorm( 0 , 0.5 ) ,
+        bM[South] ~ dnorm( 0 , 0.5 ) ,
+        bW[South] ~ dnorm( 0 , 0.5 ) ,
+        sigma ~ dexp( 1 )
+    ) , data = d )
+
+precis( mH1, depth=2)
+```
+
+```{r}
+bW_south <- coef(mH1)['bW[1]']
+bW_not_south <- coef(mH1)['bW[2]']
+print(sprintf("Influnce of the number of waffle houses on the the divorce rate in the south: %.2f", bW_south))
+print(sprintf("Influnce of the number of waffle houses on the the divorce rate not in the south: %.2f", bW_not_south))
+```
+
+## 6H2.
+
+Given: WaffleDivorce data.
+
+Want: Test implied conditional independencies in the model.
+
+Sol.:
+
+```{r}
+impliedConditionalIndependencies( dag_wd )
+```
+
+Want: (a) Does "A _||_ W | S" hold?
+
+
+```{r}
+dat <- list(
+  A = d$A,
+  W = d$W,
+  S = as.integer(as.factor(d$South))
+)
+```
+
+
+
+```{r}
+m6H2a <- quap(
+    alist(
+        W ~ dnorm( mu , sigma ) ,
+        mu <- a[S] + b[S]*A,
+        a[S] ~ dnorm( 0 , 1 ) ,
+        b[S] ~ dnorm( 0 , 1 ) ,
+        sigma ~ dexp( 1 )
+    ) , data = dat )
+
+precis( m6H2a, depth = 2)
+```
+
+- In the south, age is positively correlated with the number of waffle houses.
+- Outside the south, age is not correlated with the number of waffle houses.
+
+Want: (b) Does "D _||_ S | A, M, W" hold?
+
+```{r}
+summary(d$A)
+```
+
+```{r}
+discretize <- function(obj_name, N){
+  dcol <- d[,c(obj_name)]
+  obj_seq <- seq( from=min(d[dcol>-Inf,c(obj_name)]) , to=max(d[dcol<Inf,c(obj_name)]) , length.out=N-2 )
+  return(cut(dcol, breaks=c(-Inf,obj_seq,Inf)))
+}
+d$A.stage <- discretize("A", 11)
+d$W.stage <- discretize("M", 11)
+d$M.stage <- discretize("W", 11)
+```
+
+```{r}
+dat <- list(
+  A = as.integer(as.factor(d$A.stage)),
+  W = as.integer(as.factor(d$W.stage)),
+  S = d$South,
+  M = as.integer(as.factor(d$M.stage)),
+  D = d$D
+)
+```
+
+```{r, error=TRUE}
+m6H2b <- quap(
+    alist(
+        D ~ dnorm( mu , sigma ) ,
+        mu <- aA[A] + aM[M] + aW[W] + (bA[A] + bM[M] + bW[W])*S,
+        aA[A] ~ dnorm( 0 , 1 ) ,
+        aM[M] ~ dnorm( 0 , 1 ) ,
+        aW[W] ~ dnorm( 0 , 1 ) ,
+        bA[A] ~ dnorm( 0 , 1 ) ,
+        bM[M] ~ dnorm( 0 , 1 ) ,
+        bW[W] ~ dnorm( 0 , 1 ) ,
+        sigma ~ dexp( 1 )
+    ) , data = dat, start = list(aA=0,aM=0,aW=0,bA=0,bM=0,bW=0) )
+
+precis( m6H2b, depth = 2)
+```
+
+- TODO
+
+Want: (c) Does "M _||_ W | S" hold?
+
+```{r}
+dat <- list(
+  M = d$M,
+  W = d$W,
+  S = as.integer(as.factor(d$South))
+)
+```
+
+
+
+```{r}
+m6H2c <- quap(
+    alist(
+        W ~ dnorm( mu , sigma ) ,
+        mu <- a[S] + b[S]*M,
+        a[S] ~ dnorm( 0 , 1 ) ,
+        b[S] ~ dnorm( 0 , 1 ) ,
+        sigma ~ dexp( 1 )
+    ) , data = dat )
+
+precis( m6H2c, depth = 2)
+```
+
+- In the south, marriage is weakly positively correlated with the number of waffle houses.
+- Outside the south, marriage is not correlated with the number of waffle houses.
