@@ -538,20 +538,31 @@ plot(frequencies~values)
 ```
 
 ```{r}
-N_obs <- sum(d$frequencies, na.rm = T)
-N_values <- length(d$values)
-N_obs_fair <- 20 * 8
+dcc <- d[complete.cases(d),]
+N_obs <- nrow(dcc)
+dat <- list(
+    V = rep(1:N_obs, dcc$frequencies),
+    alpha = rep( 2 , N_obs ),
+    N = N_obs)
 ```
+
+
+```{r, results = "hide", cache = TRUE}
+set.seed(1)
+m15H4 <- ulam(
+    alist(
+        V ~ categorical(p),
+        simplex[N]:p ~ dirichlet( alpha )
+    ), data=dat , chains=4, cores=4 )
+```
+
 
 ```{r}
-set.seed(1)
-prior <- rdirichlet( 1 , alpha=rep(2,N_values) )
-samples <- sample(N_values,N_obs_fair,replace=T,prob=prior)
-hist(samples)
+pr <- precis(m15H4, depth = 2)
+max(sapply(pr$mean - 1/N_obs, abs))
 ```
 
-
-
-
+- It is unclear if splitting up the values was the right choice and how they can be aggregated in Stan again.
+- Omitting the missing cases, a 6-valued spinner has a deviation from a fair spinner of only 1.6 percent at maximum.
 
 
